@@ -164,8 +164,7 @@
       <label class="k" for="nameTpl">Output name</label>
       <div class="name-row"><input type="text" id="nameTpl" value="{name}" spellcheck="false" autocomplete="off"><span class="muted" id="extLabel">.webp</span></div>
       <div class="name-help">
-        <div class="saves-as">Saves as <code id="namePreview"></code></div>
-        <div class="field-hint">Insert:
+        <div class="saves-as">Saves as <code id="namePreview"></code></div>        <div class="field-hint">Insert:
           <button type="button" class="token" data-token="{name}">{name}</button> original file name
           <button type="button" class="token" data-token="{q}">{q}</button> compression quality (e.g. q90, lossless)
         </div>
@@ -1555,6 +1554,12 @@ const HINTS = {
 const qualityByFormat = { webp: 90, avif: 65, jpeg: 90 };
 let shownFormat = null;
 
+// Output name format, remembered per format + compression ("avif-lossy", "png-lossless", …).
+// A combination that was never edited starts from defaultNameTpl.
+const nameByCombo = {};
+let defaultNameTpl = "{name}";
+let shownCombo = null;
+
 function updateOptionsUI() {
   const format = outFormat(), f = FORMATS[format];
   if (shownFormat !== format) { // switching format: show that format's quality
@@ -1562,7 +1567,11 @@ function updateOptionsUI() {
     shownFormat = format;
   } else if (f.quality) qualityByFormat[format] = +el("quality").value;
   const ll = lossless();
-  el("cmodeKey").hidden = el("cmodeRow").hidden = f.modes.length < 2;
+  const combo = `${format}-${ll ? "lossless" : "lossy"}`;
+  if (shownCombo !== combo) { // switching format or compression: show that combination's name format
+    el("nameTpl").value = nameByCombo[combo] ?? defaultNameTpl;
+    shownCombo = combo;
+  } else nameByCombo[combo] = el("nameTpl").value;  el("cmodeKey").hidden = el("cmodeRow").hidden = f.modes.length < 2;
   el("qualityKey").hidden = el("qualityRow").hidden = ll;
   el("effortKey").hidden = el("effortRow").hidden = !f.effort;
   el("sharpKey").hidden = el("sharpRow").hidden = ll || !f.sharp;
@@ -1574,7 +1583,7 @@ function updateOptionsUI() {
   updateNameUI();
   store.set("settings", {
     format, mode: document.querySelector('input[name="cmode"]:checked').value, qualityByFormat,
-    effort: +el("effort").value, sharp: el("sharpYuv").checked, background: el("bgColor").value, nameTpl: el("nameTpl").value,
+    effort: +el("effort").value, sharp: el("sharpYuv").checked, background: el("bgColor").value, nameByCombo, defaultNameTpl,
   });
 }
 (() => {
@@ -1586,9 +1595,12 @@ function updateOptionsUI() {
     if (radio) radio.checked = true;
     if (s.qualityByFormat) Object.assign(qualityByFormat, s.qualityByFormat);
     else if (s.quality) qualityByFormat.webp = s.quality; // settings saved before AVIF/JPEG/PNG output existed
-    el("effort").value = s.effort; el("sharpYuv").checked = s.sharp;
+    if (Number.isFinite(s.effort)) el("effort").value = s.effort;
+    if (typeof s.sharp === "boolean") el("sharpYuv").checked = s.sharp;
     if (/^#[0-9a-f]{6}$/i.test(s.background || "")) el("bgColor").value = s.background;
-    if (typeof s.nameTpl === "string") el("nameTpl").value = s.nameTpl;
+    if (s.nameByCombo) Object.assign(nameByCombo, s.nameByCombo);
+    if (typeof s.defaultNameTpl === "string") defaultNameTpl = s.defaultNameTpl;
+    else if (typeof s.nameTpl === "string") defaultNameTpl = s.nameTpl; // single name format saved by earlier versions
   }
   document.querySelectorAll('input[name="ofmt"], input[name="cmode"], #quality, #effort, #sharpYuv, #bgColor, #nameTpl').forEach(i => i.addEventListener("input", updateOptionsUI));
   // Token buttons insert at the cursor.
@@ -1937,7 +1949,7 @@ el("listTargets").addEventListener("click", e => {
   select.addEventListener("keydown", ev => { if (ev.key === "Escape") finish(false); });
   btn.replaceWith(select);
   select.focus();
-  select.showPicker?.();
+  try { select.showPicker?.(); } catch { /* not allowed outside a user gesture; the focused select still works */ }
 });
 
 // Returns the fixed file, or a reason string for skipping.
