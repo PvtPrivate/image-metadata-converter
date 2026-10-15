@@ -1485,6 +1485,7 @@ const syncConvertList = makeList(el("listConvert"), key => {
   dropThumb(item.file);
   convertPngs.delete(key);
   convertStatus.delete(item.path);
+  forgetResults(item.path);
   renderConvert();
 });
 
@@ -1648,13 +1649,45 @@ el("btnStop").addEventListener("click", () => {
   workers = [];
 });
 
+// Finished conversions, kept in memory so a retry (failed save, failed ZIP download, Stop)
+// reuses them instead of encoding again. Keyed by source file + format + exact encoder options;
+// the oldest results are dropped once the cache passes RESULT_CACHE_LIMIT. Reloading clears it.
+const RESULT_CACHE_LIMIT = 1024 * 1024 * 1024; // 1 GB
+const resultCache = new Map(); // key -> Uint8Array (insertion order = least recently used first)
+let resultCacheBytes = 0;
+
+function resultKey(file, path, format, opts) {
+  return JSON.stringify([path, file.size, file.lastModified, format, opts]);
+}
+function cacheGet(key) {
+  const data = resultCache.get(key);
+  if (data) { resultCache.delete(key); resultCache.set(key, data); } // mark as recently used
+  return data;
+}
+function cachePut(key, data) {
+  if (data.length > RESULT_CACHE_LIMIT) return;
+  if (resultCache.has(key)) resultCacheBytes -= resultCache.get(key).length;
+  resultCache.delete(key);
+  resultCache.set(key, data);
+  resultCacheBytes += data.length;
+  for (const [k, d] of resultCache) {
+    if (resultCacheBytes <= RESULT_CACHE_LIMIT) break;
+    resultCache.delete(k);
+    resultCacheBytes -= d.length;
+  }
+}
+function forgetResults(path) {
+  const prefix = JSON.stringify([path]).slice(0, -1) + ",";
+  for (const [k, d] of resultCache) if (k.startsWith(prefix)) { resultCache.delete(k); resultCacheBytes -= d.length; }
+}
+
 // sink(rel, data) writes one output; exists(rel) says whether to skip it.
 async function convertAll(sink, exists) {
   const list = [...convertPngs.values()].sort(byPath);
   const clashes = outputClashes(list);
   const format = outFormat();
   const opts = encodeOptions();
-  let next = 0, done = 0, skipped = 0, failed = 0, inBytes = 0, outBytes = 0;
+  let next = 0, done = 0, skipped = 0, failed = 0, reused = 0, inBytes = 0, outBytes = 0;
   const started = performance.now();
   stopRequested = false;
   for (const { path } of list) convertStatus.delete(path);
@@ -1681,18 +1714,25 @@ async function convertAll(sink, exists) {
           convertStatus.set(path, { cls: "muted", text: "Skipped: already exists" }); skipped++;
           continue;
         }
-        convertStatus.set(path, { cls: "", text: "Encoding…" }); renderConvertSoon();
         const meta = await loadMeta(file);
         if (meta instanceof Error) throw meta;
-        const info = isWebp ? webpInfo.get(file) : null;
-        if (info?.animated) throw new Error("Animated WebP isn't supported");
-        const buf = await file.arrayBuffer();
-        const kind = fileKind(file.name);
-        const { bytes } = await worker.run({ buf, opts, format, kind: kind === "jpg" || kind === "avif" ? "image" : kind }, [buf]);
-        const data = addMetadata(format, bytes, meta, info);
-        const note = Object.keys(meta).length ? "" : " · no metadata in source";
+        const key = resultKey(file, path, format, opts);
+        let data = cacheGet(key);
+        const fromCache = !!data;
+        if (!data) {
+          convertStatus.set(path, { cls: "", text: "Encoding…" }); renderConvertSoon();
+          const info = isWebp ? webpInfo.get(file) : null;
+          if (info?.animated) throw new Error("Animated WebP isn't supported");
+          const buf = await file.arrayBuffer();
+          const kind = fileKind(file.name);
+          const { bytes } = await worker.run({ buf, opts, format, kind: kind === "jpg" || kind === "avif" ? "image" : kind }, [buf]);
+          data = addMetadata(format, bytes, meta, info);
+          cachePut(key, data); // before saving, so a failed save can be retried without encoding
+        }
+        const note = (Object.keys(meta).length ? "" : " · no metadata in source") + (fromCache ? " · reused" : "");
         await sink(out, data);
-        done++; inBytes += file.size; outBytes += data.length;
+        done++; if (fromCache) reused++;
+        inBytes += file.size; outBytes += data.length;
         // Green when it shrank, amber when the output came out bigger than the source.
         convertStatus.set(path, { cls: data.length < file.size ? "ok" : "warn", text: `${fmtBytes(file.size)} → ${fmtBytes(data.length)} (${pct(file.size, data.length)})` + note });
       } catch (e) {
@@ -1705,7 +1745,8 @@ async function convertAll(sink, exists) {
   }));
 
   const secs = ((performance.now() - started) / 1000).toFixed(1);
-  logConvert.textContent = (stopRequested ? "Stopped. " : "") + `${done} converted, ${skipped} skipped, ${failed} failed in ${secs}s` +
+  logConvert.textContent = (stopRequested ? "Stopped. " : "") + `${done} converted` + (reused ? ` (${reused} reused from an earlier run)` : "") +
+    `, ${skipped} skipped, ${failed} failed in ${secs}s` +
     (inBytes ? ` · ${fmtBytes(inBytes)} → ${fmtBytes(outBytes)} (${pct(inBytes, outBytes)})` : "") + ".";
   setBusy(false);
   return done;
@@ -1743,6 +1784,7 @@ el("btnConvertZip").addEventListener("click", async () => {
 el("btnClearConvert").addEventListener("click", () => {
   for (const { file } of convertPngs.values()) dropThumb(file);
   convertPngs.clear(); convertStatus.clear();
+  resultCache.clear(); resultCacheBytes = 0;
   logConvert.textContent = "";
   renderConvert();
 });
