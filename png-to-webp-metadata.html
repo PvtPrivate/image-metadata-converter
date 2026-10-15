@@ -1,0 +1,1560 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebP Converter</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2025; --muted: #646b76;
+    --border: #dde1e6; --accent: #3b6fd8; --accent-text: #ffffff;
+    --ok: #1f8a4c; --warn: #b7791f; --err: #c53030; --chip: #eef1f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15171b; --panel: #1e2126; --text: #e6e8eb; --muted: #9aa1ab;
+      --border: #30353d; --accent: #6b97f0; --accent-text: #0e1116;
+      --ok: #4cc283; --warn: #e0a84a; --err: #f07070; --chip: #2a2e35;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; flex-wrap: wrap; }
+  .tab { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 12px;
+    color: var(--muted); font-weight: 600; }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  /* File card: drop target and file list in one */
+  .files { position: relative; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+  .files-head { display: flex; gap: 8px 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .files-head h2 { font-size: 15px; margin: 0; display: inline; }
+  .files-head .count { color: var(--muted); font-size: 13px; margin-left: 8px; }
+  .files.empty .files-head { border-bottom: 0; }
+  .list { max-height: 52vh; overflow-y: auto; }
+  .files.empty .list { display: none; }
+  .empty-drop { margin: 0 14px 14px; border: 2px dashed var(--border); border-radius: 10px; padding: 40px 16px;
+    text-align: center; color: var(--muted); }
+  .empty-drop strong { display: block; color: var(--text); font-size: 15px; margin-bottom: 4px; }
+  .files:not(.empty) .empty-drop { display: none; }
+  .drop-overlay { position: absolute; inset: 0; border: 2px dashed var(--accent); border-radius: 12px;
+    background: color-mix(in srgb, var(--accent) 12%, var(--panel)); display: none; align-items: center;
+    justify-content: center; font-weight: 600; color: var(--accent); pointer-events: none; z-index: 1; }
+  .files.over .drop-overlay { display: flex; }
+  .row { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto 32px; gap: 4px 12px; align-items: center;
+    padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--border); }
+  .row:last-child { border-bottom: 0; }
+  .thumb { width: 52px; height: 52px; border-radius: 6px; background: var(--chip); overflow: hidden; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb img:not([src]) { visibility: hidden; }
+  .info { min-width: 0; }
+  .info .name { word-break: break-all; }
+  .info .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .status { font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+  .remove { width: 28px; height: 28px; padding: 0; border: 0; background: none; color: var(--muted);
+    font-size: 18px; line-height: 1; border-radius: 6px; }
+  .remove:hover:not(:disabled) { background: var(--chip); color: var(--err); }
+  body.busy .remove { visibility: hidden; }
+  @media (max-width: 640px) {
+    .row { grid-template-columns: 52px minmax(0, 1fr) 32px; }
+    .status { grid-column: 2; grid-row: 2; text-align: left; }
+  }
+  button { font: inherit; border: 1px solid var(--border); background: var(--panel); color: var(--text);
+    padding: 6px 12px; border-radius: 7px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .opts { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-top: 12px;
+    display: grid; grid-template-columns: auto 1fr; gap: 10px 16px; align-items: center; }
+  @media (max-width: 640px) { .opts { grid-template-columns: 1fr; } }
+  .opts .k { color: var(--muted); font-weight: 600; font-size: 13px; }
+  .seg { display: inline-flex; justify-self: start; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .seg label { padding: 5px 14px; cursor: pointer; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label:has(input:checked) { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+  .range { display: flex; gap: 10px; align-items: center; }
+  .range input { flex: 1; max-width: 360px; }
+  .range output { min-width: 5ch; font-variant-numeric: tabular-nums; }
+  .hint { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 13px; }
+  .name-row { display: flex; gap: 6px; align-items: center; }
+  .name-row input { font: inherit; width: 100%; max-width: 320px; padding: 5px 8px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  .name-row input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  /* Help sits in its own grid row under the field, so the label lines up with the input. */
+  .name-help { grid-column: 2; margin-top: -4px; }
+  @media (max-width: 640px) { .name-help { grid-column: 1; } }
+  .saves-as { font-size: 13px; color: var(--muted); }
+  .saves-as code { color: var(--text); font-size: 13px; padding: 1px 6px; word-break: break-all; }
+  .field-hint { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.9; }
+  .field-hint.warn { color: var(--warn); line-height: 1.5; }
+  .token { font: 12px ui-monospace, Consolas, monospace; padding: 0 6px; border-radius: 5px; margin-left: 4px;
+    background: var(--chip); }
+  .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 16px 0 8px; }
+  .bar .spacer { flex: 1; }
+  label.opt { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); }
+  .chip { display: inline-block; background: var(--chip); border-radius: 5px; padding: 0 6px; margin: 1px 2px 1px 0;
+    font-size: 12px; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); } .muted { color: var(--muted); }
+  details { margin-top: 20px; color: var(--muted); }
+  details summary { cursor: pointer; }
+  code { background: var(--chip); padding: 0 4px; border-radius: 4px; }
+  .log { color: var(--muted); min-height: 1.5em; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>WebP Converter</h1>
+  <p class="lead">Converts ComfyUI and A1111 images (PNG, JPG, AVIF, EXR) to WebP, or recompresses existing WebPs, keeping the workflow, prompt and generation parameters. Everything runs locally in your browser. Nothing is uploaded.</p>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="convert">Convert to WebP</button>
+    <button class="tab" data-tab="transfer">Add metadata to existing WebPs</button>
+  </nav>
+
+  <!-- ============ Convert ============ -->
+  <section id="tab-convert">
+    <div class="files empty" id="cardConvert">
+      <div class="files-head">
+        <div><h2>Images to convert</h2><span class="count" id="countConvert"></span></div>
+        <div class="btns">
+          <button class="act" data-pick="convert" data-dir="1">Add folder</button>
+          <button class="act" data-pick="convert">Add files</button>
+          <button class="act" id="btnClearConvert" hidden>Clear all</button>
+        </div>
+      </div>
+      <div class="list" id="listConvert"></div>
+      <div class="empty-drop"><strong>Drop images or folders here</strong>PNG, WebP, JPG, AVIF or EXR · or use Add folder / Add files</div>
+      <div class="drop-overlay">Drop to add</div>
+    </div>
+
+    <div class="opts">
+      <span class="k">Compression</span>
+      <div class="seg">
+        <label><input type="radio" name="cmode" value="lossless" checked> Lossless</label>
+        <label><input type="radio" name="cmode" value="lossy"> Lossy</label>
+      </div>
+      <span class="k" id="qualityKey">Quality</span>
+      <div class="range" id="qualityRow"><input type="range" id="quality" min="50" max="100" value="90"><output id="qualityOut">90</output></div>
+      <span class="k">Effort</span>
+      <div class="range"><input type="range" id="effort" min="0" max="9" value="6"><output id="effortOut">6</output></div>
+      <span class="k" id="sharpKey">Colour</span>
+      <label class="opt" id="sharpRow"><input type="checkbox" id="sharpYuv" checked> Sharp YUV (cleaner colour edges, slightly slower)</label>
+      <p class="hint" id="modeHint"></p>
+      <label class="k" for="nameTpl">Output name</label>
+      <div class="name-row"><input type="text" id="nameTpl" value="{name}" spellcheck="false" autocomplete="off"><span class="muted">.webp</span></div>
+      <div class="name-help">
+        <div class="saves-as">Saves as <code id="namePreview"></code></div>
+        <div class="field-hint">Insert:
+          <button type="button" class="token" data-token="{name}">{name}</button> original file name
+          <button type="button" class="token" data-token="{q}">{q}</button> compression quality (e.g. q90, lossless)
+        </div>
+        <div class="field-hint warn" id="nameWarn" hidden>WebP inputs keep their name. Saving into their own folder will replace the originals, and “Skip files already in the output folder” will skip them all. Add a suffix like <code>{name}_{q}</code> or pick another folder.</div>
+        <div class="field-hint warn" id="clashWarn" hidden></div>
+      </div>
+    </div>
+
+    <div class="bar">
+      <button class="primary act" id="btnConvertFolder" disabled title="Writes the WebPs into a folder you pick, keeping subfolders.">Convert &amp; save to folder…</button>
+      <button class="act" id="btnConvertZip" disabled title="Keeps everything in memory, so use it for smaller batches.">Convert &amp; download ZIP</button>
+      <label class="opt"><input type="checkbox" id="optSkipExisting" checked> Skip files already in the output folder</label>
+      <span class="spacer"></span>
+      <button id="btnStop" hidden>Stop</button>
+    </div>
+    <div class="log" id="logConvert"></div>
+  </section>
+
+  <!-- ============ Transfer ============ -->
+  <section id="tab-transfer" hidden>
+    <p class="muted" style="margin-top:0">For WebPs you already converted with another tool. Add the originals (PNG, JPG, AVIF or EXR) and the WebPs together (both folders, or a mix of files); they're paired by name (<code>image.png</code> → <code>image.webp</code>). If several originals share a name, PNG is used first, then AVIF, JPG, EXR. The WebP's image data is not re-encoded.</p>
+    <div class="files empty" id="cardTransfer">
+      <div class="files-head">
+        <div><h2>Originals + WebPs</h2><span class="count" id="countTransfer"></span></div>
+        <div class="btns">
+          <button class="act" data-pick="transfer" data-dir="1">Add folder</button>
+          <button class="act" data-pick="transfer">Add files</button>
+          <button class="act" id="btnClear" hidden>Clear all</button>
+        </div>
+      </div>
+      <div class="list" id="listTransfer"></div>
+      <div class="empty-drop"><strong>Drop the originals and the converted WebPs here</strong>files or folders, in any order</div>
+      <div class="drop-overlay">Drop to add</div>
+    </div>
+
+    <div class="bar">
+      <button class="primary act" id="btnFolder" disabled title="Writes the WebPs (with metadata) into a folder you pick. You can pick the WebP folder itself to overwrite in place.">Save to folder…</button>
+      <button class="act" id="btnZip" disabled>Download as ZIP</button>
+      <label class="opt"><input type="checkbox" id="optSkip" checked> Skip WebPs that already have metadata</label>
+    </div>
+    <div class="log" id="log"></div>
+  </section>
+
+  <details>
+    <summary>How it works</summary>
+    <ul>
+      <li><b>Encoder</b>: Google's libwebp (the same encoder as <code>cwebp</code>), compiled to WebAssembly and loaded from jsDelivr the first time you convert, so that step needs an internet connection. Lossless output is pixel-identical to the source image.</li>
+      <li><b>WebP inputs</b>: decoded and re-encoded with your settings. Their EXIF (workflow/parameters), XMP and colour profile are copied over unchanged. Animated WebPs aren't supported.</li>
+      <li><b>ComfyUI metadata</b>: EXIF IFD0 <code>Model</code> = <code>prompt:{…}</code>, <code>Make</code> = <code>workflow:{…}</code>, and any other PNG text keys in the tags below those. This is the layout ComfyUI writes itself, so you can drag the WebP onto the canvas to load the workflow.</li>
+      <li><b>A1111 / Forge metadata</b>: EXIF <code>UserComment</code> (UNICODE) = the <code>parameters</code> text, as A1111 writes it. The PNG Info tab and Civitai read it from there.</li>
+      <li><b>Metadata sources</b>: PNG text chunks, the EXIF in JPG and AVIF files (as A1111 and ComfyUI write them), and the string attributes of EXR headers.</li>
+      <li><b>EXR</b>: decoded with three.js's EXRLoader (also loaded from jsDelivr), then converted from linear light to 8-bit sRGB. Values brighter than white are clipped, and "lossless" means lossless from that 8-bit result.</li>
+      <li>PNG colour profiles (iCCP/gAMA) are not carried over. ComfyUI and A1111 output plain sRGB, so this doesn't matter for their images.</li>
+    </ul>
+  </details>
+</main>
+
+<!-- Runs inside a Web Worker: decodes the PNG and encodes it with libwebp. -->
+<script type="text/plain" id="encoderWorker">
+const BASE = "https://cdn.jsdelivr.net/npm/@jsquash/webp@1.5.0/";
+let encoder = null;
+
+function loadEncoder() {
+  encoder ||= (async () => {
+    const { defaultOptions } = await import(BASE + "meta.js");
+    let lastError;
+    for (const name of ["webp_enc_simd", "webp_enc"]) {
+      try {
+        const factory = (await import(`${BASE}codec/enc/${name}.js`)).default;
+        return { module: await factory({ noInitialRun: true }), defaultOptions };
+      } catch (e) { lastError = e; }
+    }
+    throw lastError;
+  })().catch(e => { encoder = null; throw new Error("Could not load the WebP encoder (needs internet the first time): " + (e.message || e)); });
+  return encoder;
+}
+
+// Exact PNG decoder for non-interlaced 8/16-bit images (what ComfyUI and A1111 write).
+// Returns null for anything else, which then goes through the browser's decoder.
+async function decodePng(buf) {
+  const u8 = new Uint8Array(buf), dv = new DataView(buf);
+  let p = 8, w, h, depth, ctype, interlace, plte, trns;
+  const idat = [];
+  while (p + 8 <= u8.length) {
+    const len = dv.getUint32(p);
+    const type = String.fromCharCode(u8[p + 4], u8[p + 5], u8[p + 6], u8[p + 7]);
+    const d = u8.subarray(p + 8, p + 8 + len);
+    if (type === "IHDR") { w = dv.getUint32(p + 8); h = dv.getUint32(p + 12); depth = d[8]; ctype = d[9]; interlace = d[12]; }
+    else if (type === "PLTE") plte = d;
+    else if (type === "tRNS") trns = d;
+    else if (type === "IDAT") idat.push(d);
+    else if (type === "IEND") break;
+    p += 12 + len;
+  }
+  const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[ctype];
+  if (interlace || !channels || !(depth === 8 || depth === 16) || (ctype === 3 && !plte)) return null;
+
+  const ds = new Blob(idat).stream().pipeThrough(new DecompressionStream("deflate"));
+  const raw = new Uint8Array(await new Response(ds).arrayBuffer());
+  const bpp = channels * depth / 8, stride = w * bpp;
+  if (raw.length < h * (stride + 1)) throw new Error("PNG image data is truncated");
+
+  const px = new Uint8Array(h * stride);
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (stride + 1)], src = y * (stride + 1) + 1, row = y * stride, prev = row - stride;
+    for (let x = 0; x < stride; x++) {
+      const a = x >= bpp ? px[row + x - bpp] : 0;
+      const b = y ? px[prev + x] : 0;
+      const c = x >= bpp && y ? px[prev + x - bpp] : 0;
+      let v = raw[src + x];
+      if (f === 1) v += a;
+      else if (f === 2) v += b;
+      else if (f === 3) v += (a + b) >> 1;
+      else if (f === 4) {
+        const pa = Math.abs(b - c), pb = Math.abs(a - c), pc = Math.abs(a + b - 2 * c);
+        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
+      px[row + x] = v;
+    }
+  }
+
+  const n = w * h, out = new Uint8ClampedArray(n * 4);
+  if (ctype === 6 && depth === 8) out.set(px);
+  else {
+    const wide = depth === 16;
+    const hi = i => wide ? px[i * 2] : px[i];
+    const full = i => wide ? (px[i * 2] << 8 | px[i * 2 + 1]) : px[i];
+    const key = k => trns[k * 2] << 8 | trns[k * 2 + 1];
+    for (let i = 0; i < n; i++) {
+      const s = i * channels, o = i * 4;
+      let r, g, b, a = 255;
+      if (ctype === 0) { r = g = b = hi(s); if (trns && full(s) === key(0)) a = 0; }
+      else if (ctype === 2) {
+        r = hi(s); g = hi(s + 1); b = hi(s + 2);
+        if (trns && full(s) === key(0) && full(s + 1) === key(1) && full(s + 2) === key(2)) a = 0;
+      }
+      else if (ctype === 3) { const k = px[s]; r = plte[k * 3]; g = plte[k * 3 + 1]; b = plte[k * 3 + 2]; if (trns && k < trns.length) a = trns[k]; }
+      else if (ctype === 4) { r = g = b = hi(s); a = hi(s + 1); }
+      else { r = hi(s); g = hi(s + 1); b = hi(s + 2); a = hi(s + 3); }
+      out[o] = r; out[o + 1] = g; out[o + 2] = b; out[o + 3] = a;
+    }
+  }
+  return { data: out, width: w, height: h };
+}
+
+async function decodeWithBrowser(buf) {
+  const bmp = await createImageBitmap(new Blob([buf]), { premultiplyAlpha: "none", colorSpaceConversion: "none" });
+  const ctx = new OffscreenCanvas(bmp.width, bmp.height).getContext("2d");
+  ctx.drawImage(bmp, 0, 0);
+  return ctx.getImageData(0, 0, bmp.width, bmp.height);
+}
+
+let webpDecoder = null;
+async function decodeWebp(buf) {
+  webpDecoder ||= import(BASE + "decode.js").then(m => m.default)
+    .catch(e => { webpDecoder = null; throw new Error("Could not load the WebP decoder (needs internet the first time): " + (e.message || e)); });
+  return (await webpDecoder)(buf);
+}
+
+// EXR: three.js's EXRLoader handles every OpenEXR compression type.
+const THREE_BASE = "https://cdn.jsdelivr.net/npm/three@0.186.1/";
+let exrLoader = null;
+let srgbLut = null;
+async function decodeExr(buf) {
+  exrLoader ||= Promise.all([import(THREE_BASE + "+esm"), import(THREE_BASE + "examples/jsm/loaders/EXRLoader.js/+esm")])
+    .then(([THREE, { EXRLoader }]) => { const l = new EXRLoader(); l.setDataType(THREE.FloatType); return l; })
+    .catch(e => { exrLoader = null; throw new Error("Could not load the EXR decoder (needs internet the first time): " + (e.message || e)); });
+  const { width: w, height: h, data } = (await exrLoader).parse(buf);
+  // EXR holds linear light, and the loader returns the bottom row first:
+  // flip it and encode to 8-bit sRGB (alpha stays linear). Values outside 0–1 are clipped.
+  if (!srgbLut) {
+    srgbLut = new Uint8Array(65536);
+    for (let i = 0; i < 65536; i++) {
+      const x = i / 65535;
+      srgbLut[i] = Math.round((x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055) * 255);
+    }
+  }
+  const enc = v => srgbLut[v > 0 ? (v < 1 ? (v * 65535 + 0.5) | 0 : 65535) : 0];
+  const n = w * h, ch = data.length / n, out = new Uint8ClampedArray(n * 4);
+  for (let y = 0; y < h; y++) {
+    const src = (h - 1 - y) * w, dst = y * w;
+    for (let x = 0; x < w; x++) {
+      const s = (src + x) * ch, o = (dst + x) * 4;
+      if (ch >= 3) { out[o] = enc(data[s]); out[o + 1] = enc(data[s + 1]); out[o + 2] = enc(data[s + 2]); }
+      else out[o] = out[o + 1] = out[o + 2] = enc(data[s]);
+      out[o + 3] = ch === 4 ? Math.round(Math.min(1, Math.max(0, data[s + 3])) * 255) : 255;
+    }
+  }
+  return { data: out, width: w, height: h };
+}
+
+async function decode(buf, kind) {
+  if (kind === "webp") return decodeWebp(buf);
+  if (kind === "exr") return decodeExr(buf);
+  return (kind === "png" && await decodePng(buf)) || decodeWithBrowser(buf);
+}
+
+// Small RGBA preview (nearest-neighbour) for formats the browser can't show itself.
+function shrink(img, maxW) {
+  const s = Math.max(1, img.width / maxW), w = Math.max(1, Math.round(img.width / s)), h = Math.max(1, Math.round(img.height / s));
+  const out = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const si = ((Math.min(img.height - 1, (y * s) | 0)) * img.width + Math.min(img.width - 1, (x * s) | 0)) * 4;
+    out.set(img.data.subarray(si, si + 4), (y * w + x) * 4);
+  }
+  return { rgba: out, width: w, height: h };
+}
+
+async function handle({ buf, opts, kind, thumb }) {
+  const img = await decode(buf, kind);
+  if (thumb) return shrink(img, thumb);
+  if (img.width > 16383 || img.height > 16383) throw new Error(`${img.width}×${img.height} is larger than WebP allows (16383 px)`);
+  const { module, defaultOptions } = await loadEncoder();
+  const result = module.encode(img.data, img.width, img.height, { ...defaultOptions, ...opts });
+  if (!result) throw new Error("Encoding failed");
+  return { webp: new Uint8Array(result) }; // copy out of wasm memory
+}
+
+if (typeof WorkerGlobalScope !== "undefined") {
+  self.onmessage = async e => {
+    try {
+      const r = await handle(e.data);
+      self.postMessage(r, [(r.webp || r.rgba).buffer]);
+    } catch (err) {
+      self.postMessage({ error: String(err && err.message || err) });
+    }
+  };
+}
+</script>
+
+<script>
+"use strict";
+
+/* ---------- PNG text chunk reader ---------- */
+
+const latin1 = new TextDecoder("latin1");
+const utf8 = new TextDecoder("utf-8");
+const enc = new TextEncoder();
+
+async function inflate(bytes) {
+  const ds = new DecompressionStream("deflate"); // zlib-wrapped, as PNG uses
+  const out = new Response(new Blob([bytes]).stream().pipeThrough(ds));
+  return new Uint8Array(await out.arrayBuffer());
+}
+
+function decodeText(bytes) {
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+  catch { return latin1.decode(bytes); }
+}
+
+// Reads only the chunk headers and text chunks, skipping the image data.
+async function readPngText(file) {
+  const read = async (from, to) => new Uint8Array(await file.slice(from, to).arrayBuffer());
+  const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+  const head = await read(0, 8);
+  if (!sig.every((b, i) => head[i] === b)) throw new Error("Not a PNG file");
+  const out = {};
+  let p = 8;
+  while (p + 8 <= file.size) {
+    const h = await read(p, p + 8);
+    const len = new DataView(h.buffer).getUint32(0);
+    const type = latin1.decode(h.subarray(4, 8));
+    if (type === "tEXt" || type === "zTXt" || type === "iTXt") {
+      const data = await read(p + 8, p + 8 + len);
+      const z = data.indexOf(0);
+      const key = latin1.decode(data.subarray(0, z));
+      if (type === "tEXt") {
+        // ComfyUI/A1111 write UTF-8 even in tEXt; fall back to latin1 if it isn't valid UTF-8.
+        out[key] = decodeText(data.subarray(z + 1));
+      } else if (type === "zTXt") {
+        out[key] = decodeText(await inflate(data.subarray(z + 2)));
+      } else {
+        const compressed = data[z + 1] === 1;
+        let q = z + 3;
+        q = data.indexOf(0, q) + 1; // language tag
+        q = data.indexOf(0, q) + 1; // translated keyword
+        let text = data.subarray(q);
+        if (compressed) text = await inflate(text);
+        out[key] = utf8.decode(text);
+      }
+    } else if (type === "IEND") break;
+    p += 12 + len;
+  }
+  return out;
+}
+
+/* ---------- EXIF (TIFF, big-endian) builder ---------- */
+
+// entries: [{tag, type, count, bytes}] — type 2 = ASCII, 7 = UNDEFINED, 4 = LONG
+function buildExif(meta) {
+  const ifd0 = [];
+  const exifIfd = [];
+
+  // ComfyUI layout: prompt at 0x0110, workflow at 0x010F, other keys counting down.
+  const comfyKeys = Object.keys(meta).filter(k => k !== "parameters");
+  const ordered = [];
+  if ("workflow" in meta) ordered.push("workflow");
+  for (const k of comfyKeys) if (k !== "prompt" && k !== "workflow") ordered.push(k);
+  if ("prompt" in meta) ifd0.push(ascii(0x0110, "prompt:" + meta.prompt));
+  let tag = 0x010F;
+  for (const k of ordered) {
+    if (tag < 0x0100) break;
+    ifd0.push(ascii(tag--, k + ":" + meta[k]));
+  }
+
+  // A1111 layout: UserComment with "UNICODE\0" prefix + UTF-16BE text.
+  if ("parameters" in meta) {
+    const s = meta.parameters;
+    const b = new Uint8Array(8 + s.length * 2);
+    b.set(enc.encode("UNICODE\0"));
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      b[8 + i * 2] = c >> 8; b[9 + i * 2] = c & 255;
+    }
+    exifIfd.push({ tag: 0x9286, type: 7, count: b.length, bytes: b });
+  }
+
+  if (!ifd0.length && !exifIfd.length) return null;
+  if (exifIfd.length) ifd0.push({ tag: 0x8769, type: 4, count: 1, bytes: null }); // ExifIFD pointer
+  ifd0.sort((a, b) => a.tag - b.tag);
+
+  const ifdSize = n => 2 + n * 12 + 4;
+  const dataSize = list => list.reduce((s, e) => s + (e.bytes && e.bytes.length > 4 ? e.bytes.length + (e.bytes.length & 1) : 0), 0);
+  const ifd0Off = 8;
+  const ifd0DataOff = ifd0Off + ifdSize(ifd0.length);
+  const exifOff = ifd0DataOff + dataSize(ifd0);
+  const exifDataOff = exifOff + (exifIfd.length ? ifdSize(exifIfd.length) : 0);
+  const total = exifDataOff + dataSize(exifIfd);
+
+  const out = new Uint8Array(total);
+  const dv = new DataView(out.buffer);
+  out.set([0x4D, 0x4D, 0x00, 0x2A]); // "MM", 42
+  dv.setUint32(4, ifd0Off);
+
+  function writeIfd(list, off, dataOff) {
+    dv.setUint16(off, list.length);
+    let e = off + 2;
+    for (const ent of list) {
+      dv.setUint16(e, ent.tag);
+      dv.setUint16(e + 2, ent.type);
+      dv.setUint32(e + 4, ent.count);
+      if (ent.tag === 0x8769) dv.setUint32(e + 8, exifOff);
+      else if (ent.bytes.length <= 4) out.set(ent.bytes, e + 8);
+      else {
+        dv.setUint32(e + 8, dataOff);
+        out.set(ent.bytes, dataOff);
+        dataOff += ent.bytes.length + (ent.bytes.length & 1);
+      }
+      e += 12;
+    }
+    dv.setUint32(e, 0); // no next IFD
+  }
+  writeIfd(ifd0, ifd0Off, ifd0DataOff);
+  if (exifIfd.length) writeIfd(exifIfd, exifOff, exifDataOff);
+  return out;
+}
+
+function ascii(tag, str) {
+  const s = enc.encode(str);
+  const b = new Uint8Array(s.length + 1); // NUL-terminated
+  b.set(s);
+  return { tag, type: 2, count: b.length, bytes: b };
+}
+
+/* ---------- WebP (RIFF) rewrite ---------- */
+
+function parseWebp(buf) {
+  const u8 = new Uint8Array(buf);
+  const dv = new DataView(buf);
+  if (latin1.decode(u8.subarray(0, 4)) !== "RIFF" || latin1.decode(u8.subarray(8, 12)) !== "WEBP")
+    throw new Error("Not a WebP file");
+  const end = Math.min(u8.length, 8 + dv.getUint32(4, true));
+  const chunks = [];
+  let p = 12;
+  while (p + 8 <= end) {
+    const fourcc = latin1.decode(u8.subarray(p, p + 4));
+    const size = dv.getUint32(p + 4, true);
+    chunks.push({ fourcc, data: u8.subarray(p + 8, p + 8 + size) });
+    p += 8 + size + (size & 1);
+  }
+  return chunks;
+}
+
+function webpHasMetadata(chunks) {
+  const exif = chunks.find(c => c.fourcc === "EXIF");
+  if (!exif) return false;
+  const s = latin1.decode(exif.data);
+  return s.includes("workflow:") || s.includes("prompt:") || s.includes("UNICODE\0");
+}
+
+function canvasSize(chunks) {
+  const vp8x = chunks.find(c => c.fourcc === "VP8X");
+  if (vp8x) {
+    const d = vp8x.data;
+    return { w: 1 + (d[4] | d[5] << 8 | d[6] << 16), h: 1 + (d[7] | d[8] << 8 | d[9] << 16) };
+  }
+  const vp8l = chunks.find(c => c.fourcc === "VP8L");
+  if (vp8l) {
+    const d = vp8l.data;
+    const bits = d[1] | d[2] << 8 | d[3] << 16 | d[4] << 24;
+    return { w: 1 + (bits & 0x3FFF), h: 1 + ((bits >>> 14) & 0x3FFF), alpha: !!((bits >>> 28) & 1) };
+  }
+  const vp8 = chunks.find(c => c.fourcc === "VP8 ");
+  if (vp8) {
+    const d = vp8.data;
+    return { w: (d[6] | d[7] << 8) & 0x3FFF, h: (d[8] | d[9] << 8) & 0x3FFF };
+  }
+  throw new Error("Unrecognised WebP bitstream");
+}
+
+// Reads only the chunk headers plus the metadata chunks of a WebP file.
+async function readWebpInfo(file) {
+  const read = async (from, to) => new Uint8Array(await file.slice(from, to).arrayBuffer());
+  const head = await read(0, 12);
+  if (latin1.decode(head.subarray(0, 4)) !== "RIFF" || latin1.decode(head.subarray(8, 12)) !== "WEBP") throw new Error("Not a WebP file");
+  const keep = {};
+  let animated = false, p = 12;
+  while (p + 8 <= file.size) {
+    const h = await read(p, p + 8);
+    const fourcc = latin1.decode(h.subarray(0, 4));
+    const size = new DataView(h.buffer).getUint32(4, true);
+    if (fourcc in META_FLAGS) keep[fourcc] = await read(p + 8, p + 8 + size);
+    if (fourcc === "ANIM" || fourcc === "ANMF") animated = true;
+    p += 8 + size + (size & 1);
+  }
+  return { meta: keep.EXIF ? exifToMeta(keep.EXIF) : {}, keep, animated };
+}
+
+// Reverse of buildExif: IFD0 "key:value" strings (ComfyUI) and UserComment (A1111).
+function exifToMeta(exif) {
+  const meta = {};
+  try {
+    let ex = exif;
+    if (latin1.decode(ex.subarray(0, 6)) === "Exif\0\0") ex = ex.subarray(6);
+    const le = ex[0] === 0x49;
+    const dv = new DataView(ex.buffer, ex.byteOffset, ex.byteLength);
+    const r16 = o => dv.getUint16(o, le), r32 = o => dv.getUint32(o, le);
+    const entries = off => Array.from({ length: r16(off) }, (_, i) => {
+      const e = off + 2 + i * 12;
+      return { tag: r16(e), type: r16(e + 2), count: r32(e + 4), val: r32(e + 8), at: e + 8 };
+    });
+    for (const e of entries(r32(4))) {
+      if (e.type === 2 && e.count > 4) {
+        const s = utf8.decode(ex.subarray(e.val, e.val + e.count)).replace(/\0+$/, "");
+        const i = s.indexOf(":");
+        if (i > 0 && /^\w+$/.test(s.slice(0, i))) meta[s.slice(0, i)] = s.slice(i + 1);
+      }
+      if (e.tag === 0x8769) {
+        const uc = entries(e.val).find(x => x.tag === 0x9286);
+        if (uc) {
+          const b = ex.subarray(uc.count > 4 ? uc.val : uc.at, (uc.count > 4 ? uc.val : uc.at) + uc.count);
+          const prefix = latin1.decode(b.subarray(0, 8)), body = b.subarray(8);
+          if (prefix === "UNICODE\0") {
+            let s = "";
+            for (let k = 0; k + 1 < body.length; k += 2) s += String.fromCharCode(body[k] << 8 | body[k + 1]);
+            meta.parameters = s;
+          } else meta.parameters = utf8.decode(body).replace(/\0+$/, "");
+        }
+      }
+    }
+  } catch { /* unreadable EXIF: show as no metadata */ }
+  return meta;
+}
+
+const sliceReader = file => async (from, to) => new Uint8Array(await file.slice(from, to).arrayBuffer());
+
+// JPEG: EXIF lives in an APP1 segment before the image data.
+async function readJpegMeta(file) {
+  const read = sliceReader(file);
+  const head = await read(0, 2);
+  if (head[0] !== 0xFF || head[1] !== 0xD8) throw new Error("Not a JPEG file");
+  let p = 2;
+  while (p + 4 <= file.size) {
+    const h = await read(p, p + 4);
+    if (h[0] !== 0xFF) break;
+    const marker = h[1], len = h[2] << 8 | h[3];
+    if (marker === 0xDA || marker === 0xD9) break; // image data starts
+    if (marker === 0xE1) {
+      const seg = await read(p + 4, p + 2 + len);
+      if (latin1.decode(seg.subarray(0, 6)) === "Exif\0\0") return exifToMeta(seg.subarray(6));
+    }
+    p += 2 + len;
+  }
+  return {};
+}
+
+// AVIF (HEIF): the EXIF is an "Exif" item listed in the meta box; iloc says where its bytes are.
+async function readAvifMeta(file) {
+  const read = sliceReader(file);
+  const u32 = (b, o) => (b[o] << 24 | b[o + 1] << 16 | b[o + 2] << 8 | b[o + 3]) >>> 0;
+  const u16 = (b, o) => b[o] << 8 | b[o + 1];
+  const uN = (b, o, n) => n === 0 ? 0 : n === 2 ? u16(b, o) : n === 4 ? u32(b, o) : u32(b, o) * 2 ** 32 + u32(b, o + 4);
+  const fourcc = (b, o) => latin1.decode(b.subarray(o, o + 4));
+  function* boxes(b, from, to) {
+    let p = from;
+    while (p + 8 <= to) {
+      let size = u32(b, p), hdr = 8;
+      if (size === 1) { size = uN(b, p + 8, 8); hdr = 16; } else if (size === 0) size = to - p;
+      if (size < hdr) return;
+      yield { type: fourcc(b, p + 4), start: p + hdr, end: Math.min(to, p + size) };
+      p += size;
+    }
+  }
+  // Find the top-level meta box without reading the image data.
+  let meta = null, p = 0;
+  while (p + 8 <= file.size && !meta) {
+    const h = await read(p, p + 16);
+    let size = u32(h, 0), hdr = 8;
+    if (size === 1) { size = uN(h, 8, 8); hdr = 16; } else if (size === 0) size = file.size - p;
+    if (size < hdr) break;
+    if (fourcc(h, 4) === "meta") meta = await read(p + hdr, p + size);
+    p += size;
+  }
+  if (!meta) return {};
+  let exifId = null, idat = null;
+  const locs = new Map();
+  for (const box of boxes(meta, 4, meta.length)) { // meta is a FullBox: skip version/flags
+    const b = meta, s = box.start;
+    if (box.type === "iinf") {
+      const v = b[s], first = s + 4 + (v === 0 ? 2 : 4);
+      for (const infe of boxes(b, first, box.end)) {
+        const iv = b[infe.start];
+        if (infe.type !== "infe" || iv < 2) continue;
+        const idLen = iv === 2 ? 2 : 4, o = infe.start + 4;
+        if (fourcc(b, o + idLen + 2) === "Exif") exifId = uN(b, o, idLen);
+      }
+    } else if (box.type === "iloc") {
+      const v = b[s];
+      let o = s + 4;
+      const offSize = b[o] >> 4, lenSize = b[o] & 15, baseSize = b[o + 1] >> 4, idxSize = v ? b[o + 1] & 15 : 0;
+      o += 2;
+      const count = v < 2 ? u16(b, o) : u32(b, o); o += v < 2 ? 2 : 4;
+      for (let i = 0; i < count; i++) {
+        const id = v < 2 ? u16(b, o) : u32(b, o); o += v < 2 ? 2 : 4;
+        let method = 0;
+        if (v === 1 || v === 2) { method = u16(b, o) & 15; o += 2; }
+        o += 2; // data_reference_index
+        const base = uN(b, o, baseSize); o += baseSize;
+        const n = u16(b, o); o += 2;
+        const extents = [];
+        for (let k = 0; k < n; k++) {
+          o += idxSize;
+          const off = uN(b, o, offSize); o += offSize;
+          const len = uN(b, o, lenSize); o += lenSize;
+          extents.push([base + off, len]);
+        }
+        locs.set(id, { method, extents });
+      }
+    } else if (box.type === "idat") idat = meta.subarray(box.start, box.end);
+  }
+  const loc = exifId !== null && locs.get(exifId);
+  if (!loc) return {};
+  const parts = [];
+  for (const [off, len] of loc.extents) parts.push(loc.method === 1 ? idat.subarray(off, off + len) : await read(off, off + len));
+  const data = new Uint8Array(parts.reduce((s, x) => s + x.length, 0));
+  let q = 0;
+  for (const x of parts) { data.set(x, q); q += x.length; }
+  return exifToMeta(data.subarray(4 + u32(data, 0))); // 4-byte offset to the TIFF header
+}
+
+// OpenEXR: generation data is stored as "string" header attributes (prompt, workflow, …).
+const EXR_STANDARD_ATTRS = new Set(["writer", "owner", "comments", "capDate", "name", "type", "view", "multiView", "renderingTransform", "lookModTransform", "software"]);
+async function readExrMeta(file) {
+  const read = sliceReader(file);
+  for (let size = Math.min(file.size, 1 << 20); ; size = Math.min(file.size, size * 8)) {
+    const b = await read(0, size);
+    if (!(b[0] === 0x76 && b[1] === 0x2F && b[2] === 0x31 && b[3] === 0x01)) throw new Error("Not an EXR file");
+    const dv = new DataView(b.buffer);
+    const meta = {};
+    let p = 8, complete = false;
+    const cstr = () => { const z = b.indexOf(0, p); if (z < 0) throw 0; const s = latin1.decode(b.subarray(p, z)); p = z + 1; return s; };
+    try {
+      while (true) {
+        const name = cstr();
+        if (!name) { complete = true; break; }
+        const type = cstr();
+        if (p + 4 > b.length) throw 0;
+        const len = dv.getInt32(p, true); p += 4;
+        if (p + len > b.length) throw 0;
+        if (type === "string" && !EXR_STANDARD_ATTRS.has(name)) meta[name] = utf8.decode(b.subarray(p, p + len));
+        p += len;
+      }
+    } catch { /* header continues past what we read */ }
+    if (complete || size >= file.size) return meta;
+  }
+}
+
+function writeWebp(buf, exif) {
+  return withChunks(buf, { EXIF: exif });
+}
+
+// Adds or replaces metadata chunks. extra: {ICCP?, EXIF?, "XMP "?} -> Uint8Array
+const META_FLAGS = { ICCP: 0x20, EXIF: 0x08, "XMP ": 0x04 };
+function withChunks(buf, extra) {
+  const add = Object.entries(extra).filter(([, d]) => d);
+  const chunks = parseWebp(buf).filter(c => !add.some(([f]) => f === c.fourcc));
+  let vp8x = chunks.find(c => c.fourcc === "VP8X");
+  if (!vp8x) {
+    const { w, h, alpha } = canvasSize(chunks);
+    const d = new Uint8Array(10);
+    d[0] = alpha || chunks.some(c => c.fourcc === "ALPH") ? 0x10 : 0;
+    d[4] = (w - 1) & 255; d[5] = (w - 1) >> 8 & 255; d[6] = (w - 1) >> 16 & 255;
+    d[7] = (h - 1) & 255; d[8] = (h - 1) >> 8 & 255; d[9] = (h - 1) >> 16 & 255;
+    vp8x = { fourcc: "VP8X", data: d };
+    chunks.unshift(vp8x);
+  } else {
+    vp8x.data = vp8x.data.slice();
+  }
+  for (const [fourcc, data] of add) {
+    vp8x.data[0] |= META_FLAGS[fourcc];
+    if (fourcc === "ICCP") chunks.splice(chunks.indexOf(vp8x) + 1, 0, { fourcc, data }); // right after VP8X
+    else if (fourcc === "EXIF") { // after the image data, before XMP
+      const xmpAt = chunks.findIndex(c => c.fourcc === "XMP ");
+      chunks.splice(xmpAt < 0 ? chunks.length : xmpAt, 0, { fourcc, data });
+    } else chunks.push({ fourcc, data });
+  }
+
+  const body = chunks.reduce((s, c) => s + 8 + c.data.length + (c.data.length & 1), 0);
+  const out = new Uint8Array(12 + body);
+  const dv = new DataView(out.buffer);
+  out.set(enc.encode("RIFF"));
+  dv.setUint32(4, 4 + body, true);
+  out.set(enc.encode("WEBP"), 8);
+  let p = 12;
+  for (const c of chunks) {
+    out.set(enc.encode(c.fourcc), p);
+    dv.setUint32(p + 4, c.data.length, true);
+    out.set(c.data, p + 8);
+    p += 8 + c.data.length + (c.data.length & 1);
+  }
+  return out;
+}
+
+/* ---------- ZIP (store only) ---------- */
+
+const crcTable = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(u8) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < u8.length; i++) c = crcTable[(c ^ u8[i]) & 255] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function makeZip(files) {
+  const parts = [], central = [];
+  let offset = 0;
+  for (const { name, data } of files) {
+    const nameB = enc.encode(name);
+    const crc = crc32(data);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true);
+    h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true);
+    h.setUint16(26, nameB.length, true);
+    parts.push(h.buffer, nameB, data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true);
+    c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true);
+    c.setUint16(28, nameB.length, true); c.setUint32(42, offset, true);
+    central.push(c.buffer, nameB);
+    offset += 30 + nameB.length + data.length;
+  }
+  const cdSize = central.reduce((s, b) => s + b.byteLength, 0);
+  const e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+  e.setUint32(12, cdSize, true); e.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, e.buffer], { type: "application/zip" });
+}
+
+function downloadZip(files, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(makeZip(files));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+
+/* ---------- Paths, folders, file input ---------- */
+
+function stemKey(path) { return path.replace(/\.[^./\\]+$/, "").toLowerCase(); }
+function baseName(path) { return path.split(/[\\/]/).pop(); }
+function stripRoot(path) { const i = path.search(/[\\/]/); return i < 0 ? path : path.slice(i + 1); }
+// Path relative to the dropped/picked folder (or just the file name).
+function relPath(path) { return path.includes("/") ? stripRoot(path) : path; }
+
+async function pickDir(id) {
+  if (!window.showDirectoryPicker) {
+    alert("Your browser can't write to folders. Use Chrome or Edge, or use the ZIP download.");
+    return null;
+  }
+  try { return await window.showDirectoryPicker({ mode: "readwrite", id }); }
+  catch { return null; }
+}
+
+async function dirFor(root, rel, create) {
+  const parts = rel.split("/");
+  let d = root;
+  for (const seg of parts.slice(0, -1)) d = await d.getDirectoryHandle(seg, { create });
+  return { dir: d, name: parts[parts.length - 1] };
+}
+
+async function writeToDir(root, rel, data) {
+  const { dir, name } = await dirFor(root, rel, true);
+  const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+  await w.write(data);
+  await w.close();
+}
+
+async function existsInDir(root, rel) {
+  try {
+    const { dir, name } = await dirFor(root, rel, false);
+    await dir.getFileHandle(name);
+    return true;
+  } catch { return false; }
+}
+
+async function walkEntry(entry, prefix, out) {
+  if (entry.isFile) {
+    const file = await new Promise((res, rej) => entry.file(res, rej));
+    out.push({ file, path: prefix + file.name });
+  } else if (entry.isDirectory) {
+    const reader = entry.createReader();
+    let batch;
+    do {
+      batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+      for (const e of batch) await walkEntry(e, prefix + entry.name + "/", out);
+    } while (batch.length);
+  }
+}
+
+async function walkHandle(handle, prefix, out) {
+  if (handle.kind === "file") {
+    const file = await handle.getFile();
+    out.push({ file, path: prefix + file.name });
+  } else {
+    for await (const child of handle.values()) await walkHandle(child, prefix + handle.name + "/", out);
+  }
+}
+
+// Pages opened from disk (file://) can't use the older entry API in Chrome, so try the
+// File System Access handle first, then the entry API, then the plain file list.
+// Everything is requested synchronously: the DataTransfer is emptied once the event ends.
+async function filesFromDrop(dt) {
+  const items = [...dt.items].filter(i => i.kind === "file");
+  const plain = [...dt.files];
+  const handles = items.map(i => { try { return i.getAsFileSystemHandle ? i.getAsFileSystemHandle() : null; } catch { return null; } });
+  const entries = items.map(i => { try { return i.webkitGetAsEntry ? i.webkitGetAsEntry() : null; } catch { return null; } });
+  const out = [];
+  for (let k = 0; k < items.length; k++) {
+    try {
+      const h = await handles[k];
+      if (h) { const part = []; await walkHandle(h, "", part); out.push(...part); continue; }
+    } catch {}
+    try {
+      if (entries[k]) { const part = []; await walkEntry(entries[k], "", part); out.push(...part); continue; }
+    } catch {}
+    const f = plain[k];
+    if (f && f.size) out.push({ file: f, path: f.name });
+  }
+  return out;
+}
+
+// The whole page is a drop target for the active tab.
+function setupPageDrop() {
+  let depth = 0;
+  const card = () => el(currentTab === "convert" ? "cardConvert" : "cardTransfer");
+  const hasFiles = e => [...(e.dataTransfer?.types || [])].includes("Files");
+  const reset = () => { depth = 0; document.querySelectorAll(".files.over").forEach(c => c.classList.remove("over")); };
+  document.addEventListener("dragenter", e => { if (!hasFiles(e) || busy) return; depth++; card().classList.add("over"); });
+  document.addEventListener("dragleave", e => { if (hasFiles(e) && --depth <= 0) reset(); });
+  document.addEventListener("dragover", e => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = busy ? "none" : "copy"; });
+  document.addEventListener("drop", async e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    reset();
+    if (busy) return;
+    const tab = currentTab;
+    const list = await filesFromDrop(e.dataTransfer);
+    if (tab === "convert") addConvertFiles(list); else addTransferFiles(list);
+  });
+}
+
+/* ---------- File list with thumbnails ---------- */
+
+const thumbUrls = new Map(); // File -> Promise<url | null>
+const thumbWaiting = [];
+let thumbActive = 0;
+
+function getThumb(file) {
+  if (!thumbUrls.has(file)) thumbUrls.set(file, new Promise(res => { thumbWaiting.push({ file, res }); pumpThumbs(); }));
+  return thumbUrls.get(file);
+}
+function pumpThumbs() {
+  while (thumbActive < 3 && thumbWaiting.length) {
+    const { file, res } = thumbWaiting.shift();
+    thumbActive++;
+    makeThumb(file).then(res, () => res(null)).finally(() => { thumbActive--; pumpThumbs(); });
+  }
+}
+async function makeThumb(file) {
+  let c;
+  if (fileKind(file.name) === "exr") {
+    // Browsers can't decode EXR, so a worker decodes it and sends back a small RGBA preview.
+    const { rgba, width, height } = await exrThumb(file);
+    c = new OffscreenCanvas(width, height);
+    c.getContext("2d").putImageData(new ImageData(rgba, width, height), 0, 0);
+  } else {
+    const bmp = await createImageBitmap(file, { resizeWidth: 104, resizeQuality: "medium" });
+    c = new OffscreenCanvas(bmp.width, bmp.height);
+    c.getContext("2d").drawImage(bmp, 0, 0);
+    bmp.close();
+  }
+  return URL.createObjectURL(await c.convertToBlob({ type: "image/webp", quality: 0.8 }));
+}
+
+// EXR previews go through one worker, one at a time (the files are large).
+let thumbWorker = null, exrThumbChain = Promise.resolve();
+function exrThumb(file) {
+  const job = exrThumbChain.then(async () => {
+    thumbWorker ||= makeWorker();
+    const buf = await file.arrayBuffer();
+    return thumbWorker.run({ buf, kind: "exr", thumb: 104 }, [buf]);
+  });
+  exrThumbChain = job.catch(() => {});
+  return job;
+}
+function dropThumb(file) {
+  const p = thumbUrls.get(file);
+  if (!p) return;
+  thumbUrls.delete(file);
+  p.then(u => u && URL.revokeObjectURL(u));
+}
+
+// Thumbnails load only when their row scrolls into view.
+const thumbObserver = new IntersectionObserver(entries => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    thumbObserver.unobserve(e.target);
+    const row = e.target._row, file = row.file;
+    getThumb(file).then(url => { if (url && row.file === file) row.img.src = url; });
+  }
+}, { rootMargin: "200px" });
+
+// Keyed list: rows are created once and updated in place, so thumbnails survive re-renders.
+// items: [{key, file, name, sub (html), status (html)}]
+function makeList(container, onRemove) {
+  const rows = new Map();
+  container.addEventListener("click", e => {
+    const btn = e.target.closest(".remove");
+    if (btn && !busy) onRemove(btn.closest(".row").dataset.key);
+  });
+  return function sync(items) {
+    const keep = new Set();
+    let prev = null;
+    for (const it of items) {
+      keep.add(it.key);
+      let r = rows.get(it.key);
+      if (!r) {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.dataset.key = it.key;
+        row.innerHTML = `<div class="thumb"><img alt=""></div><div class="info"><div class="name"></div><div class="sub"></div></div><div class="status"></div><button class="remove" title="Remove" aria-label="Remove">×</button>`;
+        r = { el: row, img: row.querySelector("img"), name: row.querySelector(".name"), sub: row.querySelector(".sub"), status: row.querySelector(".status"), last: {} };
+        r.img._row = r;
+        rows.set(it.key, r);
+      }
+      if (r.last.name !== it.name) r.name.textContent = r.last.name = it.name;
+      if (r.last.sub !== it.sub) r.sub.innerHTML = r.last.sub = it.sub;
+      if (r.last.status !== it.status) r.status.innerHTML = r.last.status = it.status;
+      if (r.file !== it.file) { r.file = it.file; r.img.removeAttribute("src"); thumbObserver.observe(r.img); }
+      const expected = prev ? prev.nextSibling : container.firstChild;
+      if (expected !== r.el) container.insertBefore(r.el, expected);
+      prev = r.el;
+    }
+    for (const [k, r] of rows) if (!keep.has(k)) { thumbObserver.unobserve(r.img); r.el.remove(); rows.delete(k); }
+  };
+}
+
+/* ---------- Shared UI helpers ---------- */
+
+const metaCache = new Map();   // File -> meta object | Error
+const metaPending = new Map(); // File -> Promise
+
+const webpInfo = new Map();   // File -> {keep, animated} for WebP inputs
+const isWebpFile = file => /\.webp$/i.test(file.name);
+// png | webp | jpg | avif | exr, or null for anything else.
+function fileKind(name) {
+  const ext = (name.match(/\.([^.]+)$/) || [])[1]?.toLowerCase();
+  return ext === "jpeg" ? "jpg" : ["png", "webp", "jpg", "avif", "exr"].includes(ext) ? ext : null;
+}
+const INPUT_ACCEPT = ".png,.webp,.jpg,.jpeg,.avif,.exr,image/png,image/webp,image/jpeg,image/avif";
+
+async function readMeta(file) {
+  switch (fileKind(file.name)) {
+    case "webp": { const info = await readWebpInfo(file); webpInfo.set(file, info); return info.meta; }
+    case "jpg": return readJpegMeta(file);
+    case "avif": return readAvifMeta(file);
+    case "exr": return readExrMeta(file);
+    default: return readPngText(file);
+  }
+}
+
+function loadMeta(file) {
+  if (metaCache.has(file)) return Promise.resolve(metaCache.get(file));
+  if (!metaPending.has(file)) {
+    metaPending.set(file, readMeta(file).catch(e => e).then(m => {
+      metaCache.set(file, m);
+      metaPending.delete(file);
+      return m;
+    }));
+  }
+  return metaPending.get(file);
+}
+
+function metaCell(file) {
+  const meta = metaCache.get(file);
+  if (meta === undefined) return `<span class="muted">reading…</span>`;
+  if (meta instanceof Error) return `<span class="err">${esc(meta.message)}</span>`;
+  if (webpInfo.get(file)?.animated) return `<span class="err">animated WebP (not supported)</span>`;
+  const keys = Object.keys(meta);
+  if (!keys.length) return `<span class="warn">no metadata</span>`;
+  const kind = "workflow" in meta || "prompt" in meta ? "ComfyUI" : "parameters" in meta ? "A1111" : "";
+  return (kind ? `<b>${kind}</b> ` : "") + keys.map(k => `<span class="chip">${esc(k)} · ${fmtChars(meta[k].length)}</span>`).join("");
+}
+
+// Loads metadata for the listed files one at a time, re-rendering as each arrives.
+async function fillMeta(files, render) {
+  for (const f of files) if (!metaCache.has(f)) { await loadMeta(f); render(); }
+}
+
+const el = id => document.getElementById(id);
+function fmtChars(n) { return n < 1024 ? n + " ch" : (n / 1024).toFixed(1) + "k ch"; }
+function fmtBytes(n) { return n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(0) + " KB" : (n / 1048576).toFixed(2) + " MB"; }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+function byPath(a, b) { return a.path.localeCompare(b.path, undefined, { numeric: true }); }
+
+function throttled(fn) {
+  let queued = false;
+  return () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; fn(); });
+  };
+}
+
+let busy = false;
+function setBusy(b) {
+  busy = b;
+  document.body.classList.toggle("busy", b);
+  document.querySelectorAll("button.act").forEach(x => x.disabled = b);
+  el("btnStop").hidden = !b;
+  renderConvert();
+  renderTransfer();
+}
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("webpTool." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("webpTool." + k, JSON.stringify(v)); } catch {} },
+};
+
+let currentTab = "convert";
+document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showTab(t.dataset.tab)));
+function showTab(name) {
+  currentTab = name === "transfer" ? "transfer" : "convert";
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === currentTab));
+  el("tab-convert").hidden = currentTab !== "convert";
+  el("tab-transfer").hidden = currentTab !== "transfer";
+  store.set("tab", currentTab);
+}
+showTab(store.get("tab", "convert"));
+setupPageDrop();
+
+document.querySelectorAll("[data-pick]").forEach(btn => btn.addEventListener("click", () => {
+  const kind = btn.dataset.pick;
+  const input = document.createElement("input");
+  input.type = "file";
+  input.multiple = true;
+  input.accept = INPUT_ACCEPT;
+  if (btn.dataset.dir) input.webkitdirectory = true;
+  input.onchange = () => {
+    const list = [...input.files].map(f => ({ file: f, path: f.webkitRelativePath || f.name }));
+    if (kind === "convert") addConvertFiles(list); else addTransferFiles(list);
+  };
+  input.click();
+}));
+
+/* ---------- Convert tab ---------- */
+
+const convertPngs = new Map(); // lower-cased path -> {file, path, key} (any supported input format)
+const convertStatus = new Map(); // path -> {cls, text}
+const logConvert = document.getElementById("logConvert");
+
+function addConvertFiles(list) {
+  for (const item of list) {
+    if (!fileKind(item.file.name)) continue;
+    const key = item.path.toLowerCase();
+    const old = convertPngs.get(key);
+    if (old && old.file !== item.file) dropThumb(old.file);
+    convertPngs.set(key, { ...item, key });
+  }
+  renderConvert();
+  fillMeta([...convertPngs.values()].sort(byPath).map(x => x.file), renderConvertSoon);
+}
+
+// Output path: same subfolder, file name from the template, always .webp.
+function qToken() { return lossless() ? "lossless" : "q" + el("quality").value; }
+function outputPath(path) {
+  const rel = relPath(path);
+  const slash = rel.lastIndexOf("/");
+  const stem = rel.slice(slash + 1).replace(/\.[^.]+$/, "");
+  const tpl = el("nameTpl").value.trim() || "{name}";
+  const name = tpl.replaceAll("{name}", stem).replaceAll("{q}", qToken()).replace(/[\\/:*?"<>|]/g, "_");
+  return rel.slice(0, slash + 1) + name + ".webp";
+}
+// True when a WebP input would be written under its own name.
+function overwritesSelf(path) { return isWebpFile({ name: path }) && outputPath(path).toLowerCase() === relPath(path).toLowerCase(); }
+
+// Inputs whose output path is already taken by an earlier input (e.g. a.png and a.webp): path -> first path.
+function outputClashes(list) {
+  const seen = new Map(), clashes = new Map();
+  for (const { path } of list) {
+    const out = outputPath(path).toLowerCase();
+    if (seen.has(out)) clashes.set(path, seen.get(out)); else seen.set(out, path);
+  }
+  return clashes;
+}
+
+function updateNameUI() {
+  const list = [...convertPngs.values()].sort(byPath);
+  const sample = list[0]?.path || "ComfyUI_00001_.png";
+  el("namePreview").textContent = baseName(outputPath(sample));
+  el("nameWarn").hidden = !list.some(x => overwritesSelf(x.path));
+  const clashes = outputClashes(list);
+  el("clashWarn").hidden = !clashes.size;
+  if (clashes.size) {
+    const [p, first] = clashes.entries().next().value;
+    el("clashWarn").textContent = `${clashes.size} file${clashes.size > 1 ? "s" : ""} would get the same output name as another file ` +
+      `(e.g. ${baseName(first)} and ${baseName(p)} → ${baseName(outputPath(p))}). Only the first of each is converted; remove one or change the name format.`;
+  }
+}
+
+const syncConvertList = makeList(el("listConvert"), key => {
+  const item = convertPngs.get(key);
+  if (!item) return;
+  dropThumb(item.file);
+  convertPngs.delete(key);
+  convertStatus.delete(item.path);
+  renderConvert();
+});
+
+function renderConvert() {
+  const list = [...convertPngs.values()].sort(byPath);
+  const total = list.reduce((s, x) => s + x.file.size, 0);
+  el("cardConvert").classList.toggle("empty", !list.length);
+  el("countConvert").textContent = list.length ? `${list.length} file${list.length > 1 ? "s" : ""} · ${fmtBytes(total)}` : "";
+  el("btnClearConvert").hidden = !list.length;
+  el("btnConvertFolder").disabled = busy || !list.length;
+  el("btnConvertZip").disabled = busy || !list.length;
+  updateNameUI();
+  syncConvertList(list.map(({ key, file, path }) => {
+    const st = convertStatus.get(path);
+    return {
+      key, file, name: path,
+      sub: `${fmtBytes(file.size)} · ${metaCell(file)}`,
+      status: st ? `<span class="${st.cls}">${esc(st.text)}</span>` : "",
+    };
+  }));
+}
+const renderConvertSoon = throttled(renderConvert);
+
+// Effort 0–9 follows cwebp's -z presets for lossless: [method, quality].
+const LOSSLESS_PRESETS = [[0, 0], [1, 20], [2, 25], [3, 30], [3, 50], [4, 50], [4, 75], [4, 90], [5, 90], [6, 100]];
+
+function lossless() { return document.querySelector('input[name="cmode"]:checked').value === "lossless"; }
+
+function encodeOptions() {
+  const level = +el("effort").value;
+  if (lossless()) {
+    const [method, quality] = LOSSLESS_PRESETS[level];
+    return { lossless: 1, exact: 1, method, quality };
+  }
+  return { lossless: 0, quality: +el("quality").value, method: Math.round(level * 6 / 9), use_sharp_yuv: el("sharpYuv").checked ? 1 : 0 };
+}
+
+function updateOptionsUI() {
+  const ll = lossless();
+  for (const id of ["qualityKey", "qualityRow", "sharpKey", "sharpRow"]) el(id).hidden = ll;
+  el("qualityOut").textContent = el("quality").value;
+  el("effortOut").textContent = el("effort").value;
+  el("modeHint").textContent = ll
+    ? "Pixel-identical to the source image. Higher effort makes slightly smaller files but takes longer. Re-encoding an already-lossy WebP losslessly usually makes it bigger."
+    : "Much smaller files with a small loss of detail. 90 is a good default; 95+ is very hard to tell from the original.";
+  updateNameUI();
+  store.set("settings", {
+    mode: ll ? "lossless" : "lossy", quality: +el("quality").value, effort: +el("effort").value, sharp: el("sharpYuv").checked,
+    nameTpl: el("nameTpl").value,
+  });
+}
+(() => {
+  const s = store.get("settings", null);
+  if (s) {
+    const radio = document.querySelector(`input[name="cmode"][value="${s.mode}"]`);
+    if (radio) radio.checked = true;
+    el("quality").value = s.quality; el("effort").value = s.effort; el("sharpYuv").checked = s.sharp;
+    if (typeof s.nameTpl === "string") el("nameTpl").value = s.nameTpl;
+  }
+  document.querySelectorAll('input[name="cmode"], #quality, #effort, #sharpYuv, #nameTpl').forEach(i => i.addEventListener("input", updateOptionsUI));
+  // Token buttons insert at the cursor.
+  document.querySelectorAll(".token").forEach(b => b.addEventListener("click", () => {
+    const input = el("nameTpl"), t = b.dataset.token;
+    const at = input.selectionStart ?? input.value.length, end = input.selectionEnd ?? at;
+    input.setRangeText(t, at, end, "end");
+    input.focus();
+    updateOptionsUI();
+  }));
+  updateOptionsUI();
+})();
+
+// Worker pool: each worker holds one libwebp instance and handles one image at a time.
+let workerUrl = null;
+let workers = [];
+const poolSize = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 4) - 1));
+
+// Some setups (e.g. sandboxed previews) can't start workers; then encode on the page itself.
+let noWorkers = false;
+let mainThreadHandle = null;
+function runOnPage(msg) {
+  mainThreadHandle ||= new Function(el("encoderWorker").textContent + "\nreturn handle;")();
+  return mainThreadHandle(msg);
+}
+
+function makeWorker() {
+  let w = null;
+  if (!noWorkers) {
+    try {
+      workerUrl ||= URL.createObjectURL(new Blob([el("encoderWorker").textContent], { type: "text/javascript" }));
+      w = new Worker(workerUrl, { type: "module" });
+    } catch { noWorkers = true; }
+  }
+  let pending = null, worked = false;
+  const settle = (fn, v) => { const p = pending; pending = null; if (p) p[fn](v); };
+  if (w) {
+    w.onmessage = e => { worked = true; e.data.error ? settle("reject", new Error(e.data.error)) : settle("resolve", e.data); };
+    w.onerror = e => {
+      e.preventDefault();
+      if (!worked) { noWorkers = true; const p = pending; pending = null; if (p) runOnPage(p.msg).then(p.resolve, p.reject); }
+      else settle("reject", new Error(e.message || "Encoder worker failed"));
+    };
+  }
+  return {
+    run(msg, transfer) {
+      if (noWorkers || !w) return runOnPage(msg);
+      return new Promise((resolve, reject) => { pending = { resolve, reject, msg }; w.postMessage(msg, worked ? transfer : []); }); // keep buf usable for the fallback until the worker is known to work
+    },
+    terminate() { if (w) w.terminate(); settle("reject", new Error("Stopped")); },
+  };
+}
+
+let stopRequested = false;
+el("btnStop").addEventListener("click", () => {
+  stopRequested = true;
+  workers.forEach(w => w.terminate());
+  workers = [];
+});
+
+// sink(rel, data) writes one output; exists(rel) says whether to skip it.
+async function convertAll(sink, exists) {
+  const list = [...convertPngs.values()].sort(byPath);
+  const clashes = outputClashes(list);
+  const opts = encodeOptions();
+  let next = 0, done = 0, skipped = 0, failed = 0, inBytes = 0, outBytes = 0;
+  const started = performance.now();
+  stopRequested = false;
+  for (const { path } of list) convertStatus.delete(path);
+  setBusy(true);
+
+  const progress = () => {
+    logConvert.textContent = `${done + skipped + failed} / ${list.length} processed` +
+      (inBytes ? ` · ${fmtBytes(inBytes)} → ${fmtBytes(outBytes)} (${pct(inBytes, outBytes)})` : "");
+  };
+  progress();
+
+  while (workers.length < Math.min(poolSize, list.length)) workers.push(makeWorker());
+  await Promise.all(workers.slice(0, list.length).map(async worker => {
+    while (!stopRequested && next < list.length) {
+      const { file, path } = list[next++];
+      const out = outputPath(path);
+      const isWebp = isWebpFile(file);
+      try {
+        if (clashes.has(path)) {
+          convertStatus.set(path, { cls: "warn", text: `Skipped: same output name as ${baseName(clashes.get(path))}` }); skipped++;
+          continue;
+        }
+        if (exists && await exists(out)) {
+          convertStatus.set(path, { cls: "muted", text: "Skipped: already exists" }); skipped++;
+          continue;
+        }
+        convertStatus.set(path, { cls: "", text: "Encoding…" }); renderConvertSoon();
+        const meta = await loadMeta(file);
+        if (meta instanceof Error) throw meta;
+        const info = isWebp ? webpInfo.get(file) : null;
+        if (info?.animated) throw new Error("Animated WebP isn't supported");
+        const buf = await file.arrayBuffer();
+        const kind = fileKind(file.name);
+        const { webp } = await worker.run({ buf, opts, kind: kind === "jpg" || kind === "avif" ? "image" : kind }, [buf]);
+        let data, note = "";
+        if (isWebp) {
+          // Carry over the source's EXIF (workflow/parameters), XMP and colour profile as-is.
+          data = Object.keys(info.keep).length ? withChunks(webp.buffer, info.keep) : webp;
+          if (!info.keep.EXIF) note = " · no metadata in source";
+        } else {
+          const exif = buildExif(meta);
+          data = exif ? writeWebp(webp.buffer, exif) : webp;
+          if (!exif) note = " · no metadata in source";
+        }
+        await sink(out, data);
+        done++; inBytes += file.size; outBytes += data.length;
+        // Green when it shrank, amber when the output came out bigger than the source.
+        convertStatus.set(path, { cls: data.length < file.size ? "ok" : "warn", text: `${fmtBytes(file.size)} → ${fmtBytes(data.length)} (${pct(file.size, data.length)})` + note });
+      } catch (e) {
+        if (stopRequested) convertStatus.set(path, { cls: "muted", text: "Stopped" });
+        else { convertStatus.set(path, { cls: "err", text: "Error: " + e.message }); failed++; }
+      } finally {
+        progress(); renderConvertSoon();
+      }
+    }
+  }));
+
+  const secs = ((performance.now() - started) / 1000).toFixed(1);
+  logConvert.textContent = (stopRequested ? "Stopped. " : "") + `${done} converted, ${skipped} skipped, ${failed} failed in ${secs}s` +
+    (inBytes ? ` · ${fmtBytes(inBytes)} → ${fmtBytes(outBytes)} (${pct(inBytes, outBytes)})` : "") + ".";
+  setBusy(false);
+  return done;
+}
+function pct(a, b) { const d = Math.abs(Math.round((1 - b / a) * 100)); return b < a ? `−${d}%` : `+${d}%`; }
+
+el("btnConvertFolder").addEventListener("click", async () => {
+  const dir = await pickDir("webp-convert-out");
+  if (!dir) return;
+  await convertAll((rel, data) => writeToDir(dir, rel, data),
+    el("optSkipExisting").checked ? rel => existsInDir(dir, rel) : null);
+});
+
+el("btnConvertZip").addEventListener("click", async () => {
+  const files = [];
+  const n = await convertAll(async (name, data) => { files.push({ name, data }); }, null);
+  if (n) downloadZip(files, "webp-converted.zip");
+});
+
+el("btnClearConvert").addEventListener("click", () => {
+  for (const { file } of convertPngs.values()) dropThumb(file);
+  convertPngs.clear(); convertStatus.clear();
+  logConvert.textContent = "";
+  renderConvert();
+});
+
+/* ---------- Transfer tab ---------- */
+
+// "pngs" holds the originals (PNG, JPG, AVIF or EXR) that carry the metadata.
+const pngs = new Map();  // lower-cased path -> {file, path, key}
+const webps = new Map();
+const status = new Map(); // row key -> {cls, text}
+const logEl = el("log");
+
+function addTransferFiles(list) {
+  for (const item of list) {
+    const kind = fileKind(item.file.name);
+    if (!kind) continue;
+    const target = kind === "webp" ? webps : pngs;
+    const key = item.path.toLowerCase();
+    const old = target.get(key);
+    if (old && old.file !== item.file) dropThumb(old.file);
+    target.set(key, { ...item, key });
+  }
+  renderTransfer();
+  fillMeta([...pngs.values()].sort(byPath).map(p => p.file), renderTransferSoon);
+}
+
+// When several originals share a WebP's name, use the first in this order.
+const SOURCE_PRIORITY = { png: 0, avif: 1, jpg: 2, exr: 3 };
+const priority = v => SOURCE_PRIORITY[fileKind(v.file.name)] ?? 9;
+
+// Pair by relative path stem; fall back to file-name stem when folders differ.
+// Returns every WebP (with its original, if found) plus the originals no WebP uses.
+function pairs() {
+  const byRel = new Map(), byName = new Map();
+  const pick = (map, k, v) => {
+    const cur = map.get(k);
+    if (cur === undefined || (cur && priority(v) < priority(cur))) map.set(k, v);
+    else if (cur && priority(v) === priority(cur) && cur !== v) map.set(k, null); // ambiguous
+  };
+  for (const [, v] of pngs) {
+    pick(byRel, stemKey(stripRoot(v.path)), v);
+    pick(byName, stemKey(baseName(v.path)), v);
+  }
+  const used = new Map(); // original -> webp, plus same-name originals that were passed over
+  const result = [];
+  for (const [, w] of webps) {
+    const png = byRel.get(stemKey(stripRoot(w.path))) || byName.get(stemKey(baseName(w.path))) || null;
+    if (png) used.set(png, null);
+    result.push({ key: "w:" + w.key, webp: w, png });
+  }
+  for (const [, p] of pngs) {
+    if (used.has(p)) continue;
+    const winner = result.find(r => r.png && r.webp && stemKey(baseName(r.png.path)) === stemKey(baseName(p.path)));
+    result.push({ key: "p:" + p.key, webp: null, png: p, passedOver: winner?.png || null });
+  }
+  return result.sort((a, b) => byPath(a.webp || a.png, b.webp || b.png));
+}
+
+const syncTransferList = makeList(el("listTransfer"), key => {
+  const pair = pairs().find(p => p.key === key);
+  if (!pair) return;
+  for (const [map, item] of [[webps, pair.webp], [pngs, pair.png]]) {
+    if (!item) continue;
+    dropThumb(item.file);
+    map.delete(item.key);
+  }
+  status.delete(key);
+  renderTransfer();
+});
+
+function renderTransfer() {
+  const list = pairs();
+  const matched = list.filter(p => p.webp && p.png).length;
+  el("cardTransfer").classList.toggle("empty", !list.length);
+  el("countTransfer").textContent = list.length ? `${pngs.size} original${pngs.size === 1 ? "" : "s"} · ${webps.size} WebP · ${matched} matched` : "";
+  el("btnClear").hidden = !list.length;
+  el("btnFolder").disabled = busy || !matched;
+  el("btnZip").disabled = busy || !matched;
+  syncTransferList(list.map(({ key, webp, png, passedOver }) => {
+    const st = status.get(key) ||
+      (webp && png ? { cls: "", text: "Ready" }
+        : webp ? { cls: "warn", text: "No matching original" }
+        : passedOver ? { cls: "muted", text: `Not used (${baseName(passedOver.path)} is used)` }
+        : { cls: "warn", text: "No matching WebP" });
+    const sources = webp && png ? `paired with ${esc(baseName(png.path))}` : "";
+    return {
+      key,
+      file: (webp || png).file,
+      name: (webp || png).path,
+      sub: [sources, png ? metaCell(png.file) : ""].filter(Boolean).join(" · "),
+      status: `<span class="${st.cls}">${esc(st.text)}</span>`,
+    };
+  }));
+}
+const renderTransferSoon = throttled(renderTransfer);
+
+// Returns Uint8Array of the new WebP, or a reason string for skipping.
+async function processPair({ webp, png }) {
+  const meta = await loadMeta(png.file);
+  if (meta instanceof Error) throw meta;
+  const exif = buildExif(meta);
+  if (!exif) return "original has no ComfyUI/A1111 metadata";
+  const buf = await webp.file.arrayBuffer();
+  if (el("optSkip").checked && webpHasMetadata(parseWebp(buf))) return "WebP already has metadata";
+  return writeWebp(buf, exif);
+}
+
+async function transferAll(sink) {
+  const list = pairs().filter(p => p.png && p.webp);
+  let done = 0, skipped = 0, failed = 0;
+  setBusy(true);
+  for (const pair of list) {
+    logEl.textContent = `Processing ${done + skipped + failed + 1} / ${list.length}: ${pair.webp.path}`;
+    try {
+      const r = await processPair(pair);
+      if (typeof r === "string") { status.set(pair.key, { cls: "warn", text: "Skipped: " + r }); skipped++; }
+      else { await sink(relPath(pair.webp.path), r); status.set(pair.key, { cls: "ok", text: "Done" }); done++; }
+    } catch (e) {
+      status.set(pair.key, { cls: "err", text: "Error: " + e.message }); failed++;
+    }
+    renderTransferSoon();
+  }
+  logEl.textContent = `${done} written, ${skipped} skipped, ${failed} failed.`;
+  setBusy(false);
+  return done;
+}
+
+el("btnFolder").addEventListener("click", async () => {
+  const dir = await pickDir("webp-out");
+  if (dir) await transferAll((rel, data) => writeToDir(dir, rel, data));
+});
+
+el("btnZip").addEventListener("click", async () => {
+  const files = [];
+  const n = await transferAll(async (name, data) => { files.push({ name, data }); });
+  if (n) downloadZip(files, "webp-with-metadata.zip");
+});
+
+el("btnClear").addEventListener("click", () => {
+  for (const { file } of [...pngs.values(), ...webps.values()]) dropThumb(file);
+  pngs.clear(); webps.clear(); status.clear();
+  logEl.textContent = "";
+  renderTransfer();
+});
+
+renderConvert();
+renderTransfer();
+</script>
+</body>
+</html>
