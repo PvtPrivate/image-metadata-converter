@@ -16,7 +16,10 @@ Open `image-converter.html` in Chrome or Edge. Nothing to install, and images ne
   | PNG | lossless | oxipng | effort (optimisation level) |
 
   - Output name format with `{name}` and `{q}` tokens, a "Saves as" preview, and warnings when names clash or would overwrite the source.
-- **Add metadata to existing WebPs**: for WebPs made with another converter. Drop the originals and the WebPs together; they're paired by file name and the metadata is copied over without re-encoding the image.
+- **Restore metadata**: for images converted or edited with another tool that dropped the metadata.
+  - Two lists: **Originals** (any input format) and **Files to fix** (WebP, PNG, JPEG or AVIF).
+  - Files to fix are matched to originals by name. A dropdown lets you pick a different original, or one for a file that has no match.
+  - Only the metadata is written. The image isn't re-encoded, and existing generation metadata is replaced, not duplicated.
 - Drag and drop files or folders, thumbnails, per-file remove, save to a folder (keeps subfolders) or download as ZIP.
 
 ## How the metadata is stored

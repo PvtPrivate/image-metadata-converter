@@ -28,6 +28,12 @@
     color: var(--muted); font-weight: 600; }
   .tab.active { color: var(--text); border-bottom-color: var(--accent); }
   .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pair-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  @media (max-width: 760px) { .pair-grid { grid-template-columns: minmax(0, 1fr); } }
+  .pick { font: inherit; font-size: 12px; padding: 0 6px; border-radius: 5px; background: var(--chip); border-color: transparent; }
+  .pick.warn { color: var(--warn); }
+  select.pick-select { font: inherit; font-size: 12px; max-width: 100%; background: var(--bg); color: var(--text);
+    border: 1px solid var(--accent); border-radius: 5px; }
   /* File card: drop target and file list in one */
   .files { position: relative; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
   .files-head { display: flex; gap: 8px 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
@@ -114,7 +120,7 @@
 
   <nav class="tabs">
     <button class="tab active" data-tab="convert">Convert</button>
-    <button class="tab" data-tab="transfer">Add metadata to existing WebPs</button>
+    <button class="tab" data-tab="transfer">Restore metadata</button>
   </nav>
 
   <!-- ============ Convert ============ -->
@@ -178,27 +184,42 @@
     <div class="log" id="logConvert"></div>
   </section>
 
-  <!-- ============ Transfer ============ -->
+  <!-- ============ Restore metadata ============ -->
   <section id="tab-transfer" hidden>
-    <p class="muted" style="margin-top:0">For WebPs you already converted with another tool. Add the originals (PNG, JPG, AVIF or EXR) and the WebPs together (both folders, or a mix of files); they're paired by name (<code>image.png</code> → <code>image.webp</code>). If several originals share a name, PNG is used first, then AVIF, JPG, EXR. The WebP's image data is not re-encoded.</p>
-    <div class="files empty" id="cardTransfer">
-      <div class="files-head">
-        <div><h2>Originals + WebPs</h2><span class="count" id="countTransfer"></span></div>
-        <div class="btns">
-          <button class="act" data-pick="transfer" data-dir="1">Add folder</button>
-          <button class="act" data-pick="transfer">Add files</button>
-          <button class="act" id="btnClear" hidden>Clear all</button>
+    <p class="muted" style="margin-top:0">For images converted or edited with another tool that dropped the workflow or parameters. Files to fix are matched to originals by name (<code>image.png</code> → <code>image.webp</code>); pick an original yourself where there's no match. Only the metadata is written. The image itself is not re-encoded.</p>
+    <div class="pair-grid">
+      <div class="files empty" id="cardSources">
+        <div class="files-head">
+          <div><h2>Originals</h2><span class="count" id="countSources"></span></div>
+          <div class="btns">
+            <button class="act" data-pick="sources" data-dir="1">Add folder</button>
+            <button class="act" data-pick="sources">Add files</button>
+            <button class="act" id="btnClearSources" hidden>Clear all</button>
+          </div>
         </div>
+        <div class="list" id="listSources"></div>
+        <div class="empty-drop"><strong>Drop the originals here</strong>images that still have the workflow or parameters<br>PNG, WebP, JPG, AVIF or EXR</div>
+        <div class="drop-overlay">Drop originals</div>
       </div>
-      <div class="list" id="listTransfer"></div>
-      <div class="empty-drop"><strong>Drop the originals and the converted WebPs here</strong>files or folders, in any order</div>
-      <div class="drop-overlay">Drop to add</div>
+      <div class="files empty" id="cardTargets">
+        <div class="files-head">
+          <div><h2>Files to fix</h2><span class="count" id="countTargets"></span></div>
+          <div class="btns">
+            <button class="act" data-pick="targets" data-dir="1">Add folder</button>
+            <button class="act" data-pick="targets">Add files</button>
+            <button class="act" id="btnClearTargets" hidden>Clear all</button>
+          </div>
+        </div>
+        <div class="list" id="listTargets"></div>
+        <div class="empty-drop"><strong>Drop the files that lost their metadata</strong>WebP, PNG, JPG or AVIF</div>
+        <div class="drop-overlay">Drop files to fix</div>
+      </div>
     </div>
 
     <div class="bar">
-      <button class="primary act" id="btnFolder" disabled title="Writes the WebPs (with metadata) into a folder you pick. You can pick the WebP folder itself to overwrite in place.">Save to folder…</button>
+      <button class="primary act" id="btnFolder" disabled title="Writes the fixed files into a folder you pick, keeping subfolders. Pick the files' own folder to update them in place.">Save to folder…</button>
       <button class="act" id="btnZip" disabled>Download as ZIP</button>
-      <label class="opt"><input type="checkbox" id="optSkip" checked> Skip WebPs that already have metadata</label>
+      <label class="opt"><input type="checkbox" id="optSkip" checked> Skip files that already have metadata</label>
     </div>
     <div class="log" id="log"></div>
   </section>
@@ -815,12 +836,25 @@ function concatBytes(parts) {
 
 /* ---------- PNG / JPEG / AVIF metadata writers ---------- */
 
+const GENERATION_KEYS = ["prompt", "workflow", "parameters"];
+
 // PNG: one text chunk per key, right after IHDR. Like Pillow (which ComfyUI and A1111 use):
 // tEXt when the text fits Latin-1, otherwise uncompressed UTF-8 iTXt.
+// Existing text chunks with the same keys (or any generation key) are removed first.
 function pngWithText(bytes, meta) {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const ihdrEnd = 8 + 12 + dv.getUint32(8);
   const latin1Bytes = s => Uint8Array.from(s, c => c.charCodeAt(0));
+  const replace = new Set([...Object.keys(meta), ...GENERATION_KEYS]);
+  const kept = [];
+  for (let p = ihdrEnd; p + 12 <= bytes.length;) {
+    const end = p + 12 + dv.getUint32(p);
+    const type = latin1.decode(bytes.subarray(p + 4, p + 8));
+    const isText = type === "tEXt" || type === "zTXt" || type === "iTXt";
+    const body = bytes.subarray(p + 8, end - 4);
+    if (!(isText && replace.has(latin1.decode(body.subarray(0, Math.max(0, body.indexOf(0))))))) kept.push(bytes.subarray(p, end));
+    p = end;
+  }
   const chunks = Object.entries(meta).map(([key, text]) => {
     const isLatin1 = !/[^\u0000-ÿ]/.test(text);
     const type = isLatin1 ? "tEXt" : "iTXt";
@@ -835,22 +869,37 @@ function pngWithText(bytes, meta) {
     cdv.setUint32(8 + data.length, crc32(chunk.subarray(4, 8 + data.length)));
     return chunk;
   });
-  return concatBytes([bytes.subarray(0, ihdrEnd), ...chunks, bytes.subarray(ihdrEnd)]);
+  return concatBytes([bytes.subarray(0, ihdrEnd), ...chunks, ...kept]);
 }
 
 // JPEG: an APP1 "Exif" segment after SOI (and after the JFIF APP0, if any). A segment holds at most 64 KB.
+// Any existing Exif segment is replaced.
 function jpegWithExif(bytes, tiff) {
-  let at = 2;
-  if (bytes[2] === 0xFF && bytes[3] === 0xE0) at = 4 + (bytes[4] << 8 | bytes[5]);
   const len = 2 + 6 + tiff.length;
-  if (len > 0xFFFF) throw new Error(`The metadata is ${fmtBytes(tiff.length)}, but JPEG can only hold 64 KB of EXIF. Pick another output format for this image.`);
+  if (len > 0xFFFF) throw new Error(`The metadata is ${fmtBytes(tiff.length)}, but JPEG can only hold 64 KB of EXIF. Use another format for this image.`);
+  // Drop existing Exif APP1 segments (they all sit before the image data).
+  const parts = [bytes.subarray(0, 2)];
+  let p = 2;
+  while (p + 4 <= bytes.length && bytes[p] === 0xFF) {
+    const marker = bytes[p + 1];
+    if (marker === 0xDA || marker === 0xD9) break;
+    const end = p + 2 + (bytes[p + 2] << 8 | bytes[p + 3]);
+    const isExif = marker === 0xE1 && latin1.decode(bytes.subarray(p + 4, p + 10)) === "Exif\0\0";
+    if (!isExif) parts.push(bytes.subarray(p, end));
+    p = end;
+  }
+  parts.push(bytes.subarray(p));
+  const clean = concatBytes(parts);
+  let at = 2;
+  if (clean[2] === 0xFF && clean[3] === 0xE0) at = 4 + (clean[4] << 8 | clean[5]);
   const head = new Uint8Array([0xFF, 0xE1, len >> 8, len & 255, 0x45, 0x78, 0x69, 0x66, 0, 0]); // "Exif\0\0"
-  return concatBytes([bytes.subarray(0, at), head, tiff, bytes.subarray(at)]);
+  return concatBytes([clean.subarray(0, at), head, tiff, clean.subarray(at)]);
 }
 
 // AVIF (HEIF): adds an "Exif" item. The meta box gets a new infe entry, an iloc entry pointing at
 // the data (appended in a new mdat box) and a cdsc reference to the primary image. The meta box
 // grows, so every iloc offset that points past it is shifted by the same amount.
+// If the file already has an Exif item, that item is pointed at the new data instead.
 function avifWithExif(bytes, tiff) {
   const u32 = (b, o) => (b[o] << 24 | b[o + 1] << 16 | b[o + 2] << 8 | b[o + 3]) >>> 0;
   const u16 = (b, o) => b[o] << 8 | b[o + 1];
@@ -905,13 +954,20 @@ function avifWithExif(bytes, tiff) {
   const iinfV = bytes[iinf.body];
   const infes = boxes(bytes, iinf.body + 4 + (iinfV === 0 ? 2 : 4), iinf.end);
   const oldIref = children.find(c => c.type === "iref");
-  const exifId = Math.max(0, ...items.map(i => i.id)) + 1;
-  if (exifId > 0xFFFF || primary > 0xFFFF) throw new Error("Unsupported AVIF layout (item IDs above 65535)");
+  let existingId = null;
+  for (const infe of infes) {
+    const iv = bytes[infe.body];
+    if (infe.type !== "infe" || iv < 2) continue;
+    const idLen = iv === 2 ? 2 : 4;
+    if (type(bytes, infe.body + 4 + idLen + 2) === "Exif") existingId = uN(bytes, infe.body + 4, idLen);
+  }
+  const exifId = existingId ?? Math.max(0, ...items.map(i => i.id)) + 1;
+  if (exifId > 0xFFFF || primary > 0xFFFF || items.some(i => i.id > 0xFFFF)) throw new Error("Unsupported AVIF layout (item IDs above 65535)");
 
   const payload = concatBytes([be(0, 4), tiff]); // 4-byte offset to the TIFF header, then the TIFF
   const build = delta => {
     const shift = off => off >= meta.end ? off + delta : off; // only data stored after the meta box moves
-    const all = [...items.map(it => ({ ...it, extents: it.method === 0 ? it.extents.map(([off, len]) => [shift(off), len]) : it.extents })),
+    const all = [...items.filter(it => it.id !== exifId).map(it => ({ ...it, extents: it.method === 0 ? it.extents.map(([off, len]) => [shift(off), len]) : it.extents })),
       { id: exifId, method: 0, dataRef: 0, extents: [[bytes.length + delta + 8, payload.length]] }];
     const ilocV = v === 0 ? 0 : 1;
     const ilocBody = [new Uint8Array([0x44, 0x00]), be(all.length, 2)];
@@ -931,6 +987,7 @@ function avifWithExif(bytes, tiff) {
     const parts = [];
     for (const c of children) {
       if (c.type === "iloc") parts.push(newIloc);
+      else if (existingId !== null) parts.push(bytes.subarray(c.at, c.end)); // item and reference already exist
       else if (c.type === "iinf") { parts.push(newIinf); if (!oldIref) parts.push(newIref); }
       else if (c.type === "iref") parts.push(newIref);
       else parts.push(bytes.subarray(c.at, c.end));
@@ -1119,24 +1176,35 @@ async function filesFromDrop(dt) {
   return out;
 }
 
-// The whole page is a drop target for the active tab.
+// On the Convert tab the whole page is a drop target. On Restore metadata there are two cards,
+// so a drop goes to the card under the pointer (anywhere else it's ignored).
 function setupPageDrop() {
-  let depth = 0;
-  const card = () => el(currentTab === "convert" ? "cardConvert" : "cardTransfer");
   const hasFiles = e => [...(e.dataTransfer?.types || [])].includes("Files");
-  const reset = () => { depth = 0; document.querySelectorAll(".files.over").forEach(c => c.classList.remove("over")); };
-  document.addEventListener("dragenter", e => { if (!hasFiles(e) || busy) return; depth++; card().classList.add("over"); });
-  document.addEventListener("dragleave", e => { if (hasFiles(e) && --depth <= 0) reset(); });
-  document.addEventListener("dragover", e => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = busy ? "none" : "copy"; });
+  const cardAt = e => currentTab === "convert" ? el("cardConvert") : e.target.closest?.("#cardSources, #cardTargets") || null;
+  const highlight = card => document.querySelectorAll(".files").forEach(c => c.classList.toggle("over", c === card));
+  document.addEventListener("dragover", e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    const card = busy ? null : cardAt(e);
+    highlight(card);
+    e.dataTransfer.dropEffect = card ? "copy" : "none";
+  });
+  document.addEventListener("dragleave", e => { if (hasFiles(e) && !e.relatedTarget) highlight(null); }); // left the window
   document.addEventListener("drop", async e => {
     if (!hasFiles(e)) return;
     e.preventDefault();
-    reset();
-    if (busy) return;
-    const tab = currentTab;
+    const card = busy ? null : cardAt(e);
+    highlight(null);
+    if (!card) return;
     const list = await filesFromDrop(e.dataTransfer);
-    if (tab === "convert") addConvertFiles(list); else addTransferFiles(list);
+    addFilesTo(card.id, list);
   });
+}
+
+function addFilesTo(target, list) {
+  if (target === "cardConvert" || target === "convert") addConvertFiles(list);
+  else if (target === "cardSources" || target === "sources") addSourceFiles(list);
+  else addTargetFiles(list);
 }
 
 /* ---------- File list with thumbnails ---------- */
@@ -1337,8 +1405,7 @@ document.querySelectorAll("[data-pick]").forEach(btn => btn.addEventListener("cl
   input.accept = INPUT_ACCEPT;
   if (btn.dataset.dir) input.webkitdirectory = true;
   input.onchange = () => {
-    const list = [...input.files].map(f => ({ file: f, path: f.webkitRelativePath || f.name }));
-    if (kind === "convert") addConvertFiles(list); else addTransferFiles(list);
+    addFilesTo(kind, [...input.files].map(f => ({ file: f, path: f.webkitRelativePath || f.name })));
   };
   input.click();
 }));
@@ -1680,121 +1747,181 @@ el("btnClearConvert").addEventListener("click", () => {
   renderConvert();
 });
 
-/* ---------- Transfer tab ---------- */
+/* ---------- Restore metadata tab ---------- */
 
-// "pngs" holds the originals (PNG, JPG, AVIF or EXR) that carry the metadata.
-const pngs = new Map();  // lower-cased path -> {file, path, key}
-const webps = new Map();
-const status = new Map(); // row key -> {cls, text}
+const sources = new Map();  // lower-cased path -> {file, path, key}: originals that carry the metadata
+const targets = new Map();  // lower-cased path -> {file, path, key}: files that lost it
+const manualSource = new Map(); // target key -> source key ("" = none), set from the dropdown
+const status = new Map();   // target key -> {cls, text}
 const logEl = el("log");
 
-function addTransferFiles(list) {
+// Formats metadata can be written into without re-encoding.
+const TARGET_FORMAT = { webp: "webp", png: "png", jpg: "jpeg", avif: "avif" };
+
+function addInto(map, list, accept) {
   for (const item of list) {
     const kind = fileKind(item.file.name);
-    if (!kind) continue;
-    const target = kind === "webp" ? webps : pngs;
+    if (!kind || !accept(kind)) continue;
     const key = item.path.toLowerCase();
-    const old = target.get(key);
+    const old = map.get(key);
     if (old && old.file !== item.file) dropThumb(old.file);
-    target.set(key, { ...item, key });
+    map.set(key, { ...item, key });
   }
+}
+function addSourceFiles(list) {
+  addInto(sources, list, () => true);
   renderTransfer();
-  fillMeta([...pngs.values()].sort(byPath).map(p => p.file), renderTransferSoon);
+  fillMeta([...sources.values()].sort(byPath).map(s => s.file), renderTransferSoon);
+}
+function addTargetFiles(list) {
+  addInto(targets, list, kind => kind in TARGET_FORMAT);
+  renderTransfer();
+  fillMeta([...targets.values()].sort(byPath).map(t => t.file), renderTransferSoon);
 }
 
-// When several originals share a WebP's name, use the first in this order.
-const SOURCE_PRIORITY = { png: 0, avif: 1, jpg: 2, exr: 3 };
-const priority = v => SOURCE_PRIORITY[fileKind(v.file.name)] ?? 9;
+const hasGenMeta = m => m && !(m instanceof Error) && Object.keys(m).length > 0;
 
-// Pair by relative path stem; fall back to file-name stem when folders differ.
-// Returns every WebP (with its original, if found) plus the originals no WebP uses.
-function pairs() {
+// When several originals share a name: ones known to have metadata first, then PNG, AVIF, JPG, WebP, EXR.
+const SOURCE_PRIORITY = { png: 0, avif: 1, jpg: 2, webp: 3, exr: 4 };
+function rank(s) {
+  const m = metaCache.get(s.file);
+  return (m === undefined ? 1 : hasGenMeta(m) ? 0 : 2) * 10 + (SOURCE_PRIORITY[fileKind(s.file.name)] ?? 9);
+}
+
+// target key -> source item or null. A dropdown choice wins; otherwise match by relative path,
+// then by file name (only when that name points at a single best original).
+function matchSources() {
   const byRel = new Map(), byName = new Map();
-  const pick = (map, k, v) => {
-    const cur = map.get(k);
-    if (cur === undefined || (cur && priority(v) < priority(cur))) map.set(k, v);
-    else if (cur && priority(v) === priority(cur) && cur !== v) map.set(k, null); // ambiguous
-  };
-  for (const [, v] of pngs) {
-    pick(byRel, stemKey(stripRoot(v.path)), v);
-    pick(byName, stemKey(baseName(v.path)), v);
+  const add = (map, k, s) => { (map.get(k) || map.set(k, []).get(k)).push(s); };
+  for (const s of sources.values()) {
+    add(byRel, stemKey(stripRoot(s.path)), s);
+    add(byName, stemKey(baseName(s.path)), s);
   }
-  const used = new Map(); // original -> webp, plus same-name originals that were passed over
-  const result = [];
-  for (const [, w] of webps) {
-    const png = byRel.get(stemKey(stripRoot(w.path))) || byName.get(stemKey(baseName(w.path))) || null;
-    if (png) used.set(png, null);
-    result.push({ key: "w:" + w.key, webp: w, png });
+  const best = list => list && [...list].sort((a, b) => rank(a) - rank(b))[0];
+  const out = new Map();
+  for (const t of targets.values()) {
+    if (manualSource.has(t.key)) { out.set(t.key, sources.get(manualSource.get(t.key)) || null); continue; }
+    const pick = list => best(list?.filter(s => s.file !== t.file));
+    out.set(t.key, pick(byRel.get(stemKey(stripRoot(t.path)))) || pick(byName.get(stemKey(baseName(t.path)))) || null);
   }
-  for (const [, p] of pngs) {
-    if (used.has(p)) continue;
-    const winner = result.find(r => r.png && r.webp && stemKey(baseName(r.png.path)) === stemKey(baseName(p.path)));
-    result.push({ key: "p:" + p.key, webp: null, png: p, passedOver: winner?.png || null });
-  }
-  return result.sort((a, b) => byPath(a.webp || a.png, b.webp || b.png));
+  return out;
 }
 
-const syncTransferList = makeList(el("listTransfer"), key => {
-  const pair = pairs().find(p => p.key === key);
-  if (!pair) return;
-  for (const [map, item] of [[webps, pair.webp], [pngs, pair.png]]) {
-    if (!item) continue;
-    dropThumb(item.file);
-    map.delete(item.key);
-  }
+const syncSourceList = makeList(el("listSources"), key => {
+  const s = sources.get(key);
+  if (!s) return;
+  dropThumb(s.file);
+  sources.delete(key);
+  for (const [t, k] of manualSource) if (k === key) manualSource.delete(t);
+  renderTransfer();
+});
+const syncTargetList = makeList(el("listTargets"), key => {
+  const t = targets.get(key);
+  if (!t) return;
+  dropThumb(t.file);
+  targets.delete(key);
+  manualSource.delete(key);
   status.delete(key);
   renderTransfer();
 });
 
 function renderTransfer() {
-  const list = pairs();
-  const matched = list.filter(p => p.webp && p.png).length;
-  el("cardTransfer").classList.toggle("empty", !list.length);
-  el("countTransfer").textContent = list.length ? `${pngs.size} original${pngs.size === 1 ? "" : "s"} · ${webps.size} WebP · ${matched} matched` : "";
-  el("btnClear").hidden = !list.length;
-  el("btnFolder").disabled = busy || !matched;
-  el("btnZip").disabled = busy || !matched;
-  syncTransferList(list.map(({ key, webp, png, passedOver }) => {
-    const st = status.get(key) ||
-      (webp && png ? { cls: "", text: "Ready" }
-        : webp ? { cls: "warn", text: "No matching original" }
-        : passedOver ? { cls: "muted", text: `Not used (${baseName(passedOver.path)} is used)` }
-        : { cls: "warn", text: "No matching WebP" });
-    const sources = webp && png ? `paired with ${esc(baseName(png.path))}` : "";
+  const matches = matchSources();
+  const used = new Map(); // source key -> number of targets using it
+  for (const s of matches.values()) if (s) used.set(s.key, (used.get(s.key) || 0) + 1);
+  const ready = [...matches.values()].filter(Boolean).length;
+
+  el("cardSources").classList.toggle("empty", !sources.size);
+  el("cardTargets").classList.toggle("empty", !targets.size);
+  el("countSources").textContent = sources.size ? `${sources.size} file${sources.size === 1 ? "" : "s"}` : "";
+  el("countTargets").textContent = targets.size ? `${targets.size} file${targets.size === 1 ? "" : "s"} · ${ready} matched` : "";
+  el("btnClearSources").hidden = !sources.size;
+  el("btnClearTargets").hidden = !targets.size;
+  el("btnFolder").disabled = busy || !ready;
+  el("btnZip").disabled = busy || !ready;
+
+  syncSourceList([...sources.values()].sort(byPath).map(s => {
+    const n = used.get(s.key) || 0;
     return {
-      key,
-      file: (webp || png).file,
-      name: (webp || png).path,
-      sub: [sources, png ? metaCell(png.file) : ""].filter(Boolean).join(" · "),
+      key: s.key, file: s.file, name: s.path,
+      sub: metaCell(s.file),
+      status: n ? `<span class="ok">used for ${n}</span>` : `<span class="muted">not used</span>`,
+    };
+  }));
+
+  syncTargetList([...targets.values()].sort(byPath).map(t => {
+    const src = matches.get(t.key);
+    const own = metaCache.get(t.file);
+    const srcMeta = src && metaCache.get(src.file);
+    const pick = src
+      ? `<button type="button" class="pick" data-target="${esc(t.key)}" title="Choose a different original">${esc(baseName(src.path))} ▾</button>`
+      : `<button type="button" class="pick warn" data-target="${esc(t.key)}">${sources.size ? "Choose original ▾" : "add originals on the left"}</button>`;
+    const st = status.get(t.key) ||
+      (!src ? { cls: "warn", text: "No original" }
+        : srcMeta instanceof Error ? { cls: "err", text: "Can't read original" }
+        : srcMeta && !hasGenMeta(srcMeta) ? { cls: "warn", text: "Original has no metadata" }
+        : hasGenMeta(own) ? { cls: "muted", text: el("optSkip").checked ? "Already has metadata" : "Ready (replaces metadata)" }
+        : { cls: "", text: "Ready" });
+    return {
+      key: t.key, file: t.file, name: t.path,
+      sub: `Metadata from ${pick}` + (srcMeta && hasGenMeta(srcMeta) ? " · " + metaCell(src.file) : ""),
       status: `<span class="${st.cls}">${esc(st.text)}</span>`,
     };
   }));
 }
 const renderTransferSoon = throttled(renderTransfer);
+el("optSkip").addEventListener("input", renderTransfer);
 
-// Returns Uint8Array of the new WebP, or a reason string for skipping.
-async function processPair({ webp, png }) {
-  const meta = await loadMeta(png.file);
-  if (meta instanceof Error) throw meta;
-  const exif = buildExif(meta);
-  if (!exif) return "original has no ComfyUI/A1111 metadata";
-  const buf = await webp.file.arrayBuffer();
-  if (el("optSkip").checked && webpHasMetadata(parseWebp(buf))) return "WebP already has metadata";
-  return writeWebp(buf, exif);
+// "Metadata from" button -> a dropdown of all originals, built only when opened.
+el("listTargets").addEventListener("click", e => {
+  const btn = e.target.closest(".pick");
+  if (!btn || busy) return;
+  const tKey = btn.dataset.target, current = matchSources().get(tKey);
+  const select = document.createElement("select");
+  select.className = "pick-select";
+  const opts = [["", "— none —"], ...[...sources.values()].sort(byPath).map(s => [s.key, s.path])];
+  for (const [value, label] of opts) select.add(new Option(label, value, false, value === (current?.key ?? "")));
+  let done = false;
+  const finish = commit => {
+    if (done) return;
+    done = true;
+    if (commit) { manualSource.set(tKey, select.value); status.delete(tKey); }
+    renderTransfer();
+    // The row's markup only changes when the choice did; put the button back otherwise.
+    if (select.isConnected) select.replaceWith(btn);
+  };
+  select.addEventListener("change", () => finish(true));
+  select.addEventListener("blur", () => finish(false));
+  select.addEventListener("keydown", ev => { if (ev.key === "Escape") finish(false); });
+  btn.replaceWith(select);
+  select.focus();
+  select.showPicker?.();
+});
+
+// Returns the fixed file, or a reason string for skipping.
+async function restoreOne(t, src) {
+  const meta = await loadMeta(src.file);
+  if (meta instanceof Error) throw new Error("Can't read original: " + meta.message);
+  if (!hasGenMeta(meta)) return "original has no metadata";
+  const own = await loadMeta(t.file);
+  if (el("optSkip").checked && hasGenMeta(own)) return "already has metadata";
+  const bytes = new Uint8Array(await t.file.arrayBuffer());
+  return addMetadata(TARGET_FORMAT[fileKind(t.file.name)], bytes, meta, null);
 }
 
 async function transferAll(sink) {
-  const list = pairs().filter(p => p.png && p.webp);
+  const matches = matchSources();
+  const list = [...targets.values()].sort(byPath).filter(t => matches.get(t.key));
   let done = 0, skipped = 0, failed = 0;
   setBusy(true);
-  for (const pair of list) {
-    logEl.textContent = `Processing ${done + skipped + failed + 1} / ${list.length}: ${pair.webp.path}`;
+  for (const t of list) {
+    logEl.textContent = `Processing ${done + skipped + failed + 1} / ${list.length}: ${t.path}`;
     try {
-      const r = await processPair(pair);
-      if (typeof r === "string") { status.set(pair.key, { cls: "warn", text: "Skipped: " + r }); skipped++; }
-      else { await sink(relPath(pair.webp.path), r); status.set(pair.key, { cls: "ok", text: "Done" }); done++; }
+      const r = await restoreOne(t, matches.get(t.key));
+      if (typeof r === "string") { status.set(t.key, { cls: "muted", text: "Skipped: " + r }); skipped++; }
+      else { await sink(relPath(t.path), r); status.set(t.key, { cls: "ok", text: "Done" }); done++; }
     } catch (e) {
-      status.set(pair.key, { cls: "err", text: "Error: " + e.message }); failed++;
+      status.set(t.key, { cls: "err", text: "Error: " + e.message }); failed++;
     }
     renderTransferSoon();
   }
@@ -1804,19 +1931,24 @@ async function transferAll(sink) {
 }
 
 el("btnFolder").addEventListener("click", async () => {
-  const dir = await pickDir("webp-out");
+  const dir = await pickDir("restore-out");
   if (dir) await transferAll((rel, data) => writeToDir(dir, rel, data));
 });
 
 el("btnZip").addEventListener("click", async () => {
   const files = [];
   const n = await transferAll(async (name, data) => { files.push({ name, data }); });
-  if (n) downloadZip(files, "webp-with-metadata.zip");
+  if (n) downloadZip(files, "restored-metadata.zip");
 });
 
-el("btnClear").addEventListener("click", () => {
-  for (const { file } of [...pngs.values(), ...webps.values()]) dropThumb(file);
-  pngs.clear(); webps.clear(); status.clear();
+el("btnClearSources").addEventListener("click", () => {
+  for (const { file } of sources.values()) dropThumb(file);
+  sources.clear(); manualSource.clear();
+  renderTransfer();
+});
+el("btnClearTargets").addEventListener("click", () => {
+  for (const { file } of targets.values()) dropThumb(file);
+  targets.clear(); manualSource.clear(); status.clear();
   logEl.textContent = "";
   renderTransfer();
 });
