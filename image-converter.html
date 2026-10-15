@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WebP Converter</title>
+<title>Image Converter</title>
 <style>
   :root {
     --bg: #f6f7f9; --panel: #ffffff; --text: #1d2025; --muted: #646b76;
@@ -84,6 +84,7 @@
   .name-row input { font: inherit; width: 100%; max-width: 320px; padding: 5px 8px; border-radius: 7px;
     border: 1px solid var(--border); background: var(--bg); color: var(--text); }
   .name-row input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .name-row input[type="color"] { width: 40px; height: 30px; padding: 2px; flex: none; cursor: pointer; }
   /* Help sits in its own grid row under the field, so the label lines up with the input. */
   .name-help { grid-column: 2; margin-top: -4px; }
   @media (max-width: 640px) { .name-help { grid-column: 1; } }
@@ -108,11 +109,11 @@
 </head>
 <body>
 <main>
-  <h1>WebP Converter</h1>
-  <p class="lead">Converts ComfyUI and A1111 images (PNG, JPG, AVIF, EXR) to WebP, or recompresses existing WebPs, keeping the workflow, prompt and generation parameters. Everything runs locally in your browser. Nothing is uploaded.</p>
+  <h1>Image Converter</h1>
+  <p class="lead">Converts ComfyUI and A1111 images between WebP, AVIF, JPEG and PNG (EXR in too), keeping the workflow, prompt and generation parameters. Everything runs locally in your browser. Nothing is uploaded.</p>
 
   <nav class="tabs">
-    <button class="tab active" data-tab="convert">Convert to WebP</button>
+    <button class="tab active" data-tab="convert">Convert</button>
     <button class="tab" data-tab="transfer">Add metadata to existing WebPs</button>
   </nav>
 
@@ -133,33 +134,42 @@
     </div>
 
     <div class="opts">
-      <span class="k">Compression</span>
+      <span class="k">Format</span>
       <div class="seg">
+        <label><input type="radio" name="ofmt" value="webp" checked> WebP</label>
+        <label><input type="radio" name="ofmt" value="avif"> AVIF</label>
+        <label><input type="radio" name="ofmt" value="jpeg"> JPEG</label>
+        <label><input type="radio" name="ofmt" value="png"> PNG</label>
+      </div>
+      <span class="k" id="cmodeKey">Compression</span>
+      <div class="seg" id="cmodeRow">
         <label><input type="radio" name="cmode" value="lossless" checked> Lossless</label>
         <label><input type="radio" name="cmode" value="lossy"> Lossy</label>
       </div>
       <span class="k" id="qualityKey">Quality</span>
-      <div class="range" id="qualityRow"><input type="range" id="quality" min="50" max="100" value="90"><output id="qualityOut">90</output></div>
-      <span class="k">Effort</span>
-      <div class="range"><input type="range" id="effort" min="0" max="9" value="6"><output id="effortOut">6</output></div>
+      <div class="range" id="qualityRow"><input type="range" id="quality" min="1" max="100" value="90"><output id="qualityOut">90</output></div>
+      <span class="k" id="effortKey">Effort</span>
+      <div class="range" id="effortRow"><input type="range" id="effort" min="0" max="9" value="6"><output id="effortOut">6</output></div>
       <span class="k" id="sharpKey">Colour</span>
       <label class="opt" id="sharpRow"><input type="checkbox" id="sharpYuv" checked> Sharp YUV (cleaner colour edges, slightly slower)</label>
+      <label class="k" id="bgKey" for="bgColor">Background</label>
+      <div class="name-row" id="bgRow"><input type="color" id="bgColor" value="#ffffff"><code id="bgHex">#ffffff</code><span class="muted">fills transparent areas (JPEG has no transparency)</span></div>
       <p class="hint" id="modeHint"></p>
       <label class="k" for="nameTpl">Output name</label>
-      <div class="name-row"><input type="text" id="nameTpl" value="{name}" spellcheck="false" autocomplete="off"><span class="muted">.webp</span></div>
+      <div class="name-row"><input type="text" id="nameTpl" value="{name}" spellcheck="false" autocomplete="off"><span class="muted" id="extLabel">.webp</span></div>
       <div class="name-help">
         <div class="saves-as">Saves as <code id="namePreview"></code></div>
         <div class="field-hint">Insert:
           <button type="button" class="token" data-token="{name}">{name}</button> original file name
           <button type="button" class="token" data-token="{q}">{q}</button> compression quality (e.g. q90, lossless)
         </div>
-        <div class="field-hint warn" id="nameWarn" hidden>WebP inputs keep their name. Saving into their own folder will replace the originals, and “Skip files already in the output folder” will skip them all. Add a suffix like <code>{name}_{q}</code> or pick another folder.</div>
+        <div class="field-hint warn" id="nameWarn" hidden></div>
         <div class="field-hint warn" id="clashWarn" hidden></div>
       </div>
     </div>
 
     <div class="bar">
-      <button class="primary act" id="btnConvertFolder" disabled title="Writes the WebPs into a folder you pick, keeping subfolders.">Convert &amp; save to folder…</button>
+      <button class="primary act" id="btnConvertFolder" disabled title="Writes the converted images into a folder you pick, keeping subfolders.">Convert &amp; save to folder…</button>
       <button class="act" id="btnConvertZip" disabled title="Keeps everything in memory, so use it for smaller batches.">Convert &amp; download ZIP</button>
       <label class="opt"><input type="checkbox" id="optSkipExisting" checked> Skip files already in the output folder</label>
       <span class="spacer"></span>
@@ -196,10 +206,10 @@
   <details>
     <summary>How it works</summary>
     <ul>
-      <li><b>Encoder</b>: Google's libwebp (the same encoder as <code>cwebp</code>), compiled to WebAssembly and loaded from jsDelivr the first time you convert, so that step needs an internet connection. Lossless output is pixel-identical to the source image.</li>
-      <li><b>WebP inputs</b>: decoded and re-encoded with your settings. Their EXIF (workflow/parameters), XMP and colour profile are copied over unchanged. Animated WebPs aren't supported.</li>
-      <li><b>ComfyUI metadata</b>: EXIF IFD0 <code>Model</code> = <code>prompt:{…}</code>, <code>Make</code> = <code>workflow:{…}</code>, and any other PNG text keys in the tags below those. This is the layout ComfyUI writes itself, so you can drag the WebP onto the canvas to load the workflow.</li>
-      <li><b>A1111 / Forge metadata</b>: EXIF <code>UserComment</code> (UNICODE) = the <code>parameters</code> text, as A1111 writes it. The PNG Info tab and Civitai read it from there.</li>
+      <li><b>Encoders</b>: libwebp (WebP), libavif (AVIF), MozJPEG (JPEG) and oxipng (PNG), compiled to WebAssembly by the jSquash project and loaded from jsDelivr the first time each one is used, so that step needs an internet connection. Lossless output is pixel-identical to the source image.</li>
+      <li><b>WebP → WebP</b>: the source's EXIF (workflow/parameters), XMP and colour profile are copied over unchanged. Animated WebPs aren't supported.</li>
+      <li><b>WebP, AVIF and JPEG metadata</b>: written as EXIF in the layout each app uses. ComfyUI: IFD0 <code>Model</code> = <code>prompt:{…}</code>, <code>Make</code> = <code>workflow:{…}</code>, and any other keys in the tags below those. A1111 / Forge: <code>UserComment</code> (UNICODE) = the <code>parameters</code> text. JPEG can hold at most 64 KB of EXIF.</li>
+      <li><b>PNG metadata</b>: one text chunk per key (<code>prompt</code>, <code>workflow</code>, <code>parameters</code>), as ComfyUI and A1111 save PNGs.</li>
       <li><b>Metadata sources</b>: PNG text chunks, the EXIF in JPG and AVIF files (as A1111 and ComfyUI write them), and the string attributes of EXR headers.</li>
       <li><b>EXR</b>: decoded with three.js's EXRLoader (also loaded from jsDelivr), then converted from linear light to 8-bit sRGB. Values brighter than white are clipped, and "lossless" means lossless from that 8-bit result.</li>
       <li>PNG colour profiles (iCCP/gAMA) are not carried over. ComfyUI and A1111 output plain sRGB, so this doesn't matter for their images.</li>
@@ -207,7 +217,7 @@
   </details>
 </main>
 
-<!-- Runs inside a Web Worker: decodes the PNG and encodes it with libwebp. -->
+<!-- Runs inside a Web Worker: decodes the source image and encodes it to the output format. -->
 <script type="text/plain" id="encoderWorker">
 const BASE = "https://cdn.jsdelivr.net/npm/@jsquash/webp@1.5.0/";
 let encoder = null;
@@ -358,21 +368,76 @@ function shrink(img, maxW) {
   return { rgba: out, width: w, height: h };
 }
 
-async function handle({ buf, opts, kind, thumb }) {
+// Other encoders, same jSquash family. Each is loaded the first time it's needed.
+// (The codec files are imported directly: the packages' wrappers use bare imports.)
+const SQ = "https://cdn.jsdelivr.net/npm/@jsquash/";
+const loaded = {};
+function loadOnce(label, load) {
+  return loaded[label] ||= load().catch(e => {
+    delete loaded[label];
+    throw new Error(`Could not load the ${label} encoder (needs internet the first time): ${e.message || e}`);
+  });
+}
+
+async function encodeWebp(img, opts) {
+  const { module, defaultOptions } = await loadEncoder();
+  return module.encode(img.data, img.width, img.height, { ...defaultOptions, ...opts });
+}
+
+async function encodeAvif(img, opts) {
+  const { module, defaultOptions } = await loadOnce("AVIF", async () => {
+    const [{ defaultOptions }, codec] = await Promise.all([import(SQ + "avif@2.1.1/meta.js"), import(SQ + "avif@2.1.1/codec/enc/avif_enc.js")]);
+    return { module: await codec.default({ noInitialRun: true }), defaultOptions };
+  });
+  const o = { ...defaultOptions, ...opts };
+  if (o.lossless) { o.quality = 100; o.qualityAlpha = -1; o.subsample = 3; } // what lossless requires: full quality, 4:4:4
+  return module.encode(new Uint8Array(img.data.buffer, img.data.byteOffset, img.data.length), img.width, img.height, o);
+}
+
+async function encodeJpeg(img, opts) {
+  const { module, defaultOptions } = await loadOnce("JPEG", async () => {
+    const [{ defaultOptions }, codec] = await Promise.all([import(SQ + "jpeg@1.6.0/meta.js"), import(SQ + "jpeg@1.6.0/codec/enc/mozjpeg_enc.js")]);
+    return { module: await codec.default({ noInitialRun: true }), defaultOptions };
+  });
+  // JPEG has no transparency: blend onto the background colour.
+  const [br, bg, bb] = opts.background || [255, 255, 255], d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const a = d[i + 3];
+    if (a === 255) continue;
+    const t = a / 255;
+    d[i] = d[i] * t + br * (1 - t); d[i + 1] = d[i + 1] * t + bg * (1 - t); d[i + 2] = d[i + 2] * t + bb * (1 - t); d[i + 3] = 255;
+  }
+  const { background, ...rest } = opts;
+  return module.encode(img.data, img.width, img.height, { ...defaultOptions, ...rest });
+}
+
+async function encodePng(img, opts) {
+  const oxipng = await loadOnce("PNG", async () => {
+    const m = await import(SQ + "oxipng@2.3.0/codec/pkg/squoosh_oxipng.js");
+    await m.default();
+    return m;
+  });
+  return oxipng.optimise_raw(img.data, img.width, img.height, opts.level ?? 2, false, false);
+}
+
+const ENCODERS = { webp: encodeWebp, avif: encodeAvif, jpeg: encodeJpeg, png: encodePng };
+const MAX_SIZE = { webp: 16383, jpeg: 65535 };
+
+async function handle({ buf, opts, kind, thumb, format = "webp" }) {
   const img = await decode(buf, kind);
   if (thumb) return shrink(img, thumb);
-  if (img.width > 16383 || img.height > 16383) throw new Error(`${img.width}×${img.height} is larger than WebP allows (16383 px)`);
-  const { module, defaultOptions } = await loadEncoder();
-  const result = module.encode(img.data, img.width, img.height, { ...defaultOptions, ...opts });
+  const max = MAX_SIZE[format];
+  if (max && (img.width > max || img.height > max)) throw new Error(`${img.width}×${img.height} is larger than ${format.toUpperCase()} allows (${max} px)`);
+  const result = await ENCODERS[format](img, opts);
   if (!result) throw new Error("Encoding failed");
-  return { webp: new Uint8Array(result) }; // copy out of wasm memory
+  return { bytes: new Uint8Array(result) }; // copy out of wasm memory
 }
 
 if (typeof WorkerGlobalScope !== "undefined") {
   self.onmessage = async e => {
     try {
       const r = await handle(e.data);
-      self.postMessage(r, [(r.webp || r.rgba).buffer]);
+      self.postMessage(r, [(r.bytes || r.rgba).buffer]);
     } catch (err) {
       self.postMessage({ error: String(err && err.message || err) });
     }
@@ -739,6 +804,142 @@ async function readExrMeta(file) {
 
 function writeWebp(buf, exif) {
   return withChunks(buf, { EXIF: exif });
+}
+
+function concatBytes(parts) {
+  const out = new Uint8Array(parts.reduce((s, p) => s + p.length, 0));
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+
+/* ---------- PNG / JPEG / AVIF metadata writers ---------- */
+
+// PNG: one text chunk per key, right after IHDR. Like Pillow (which ComfyUI and A1111 use):
+// tEXt when the text fits Latin-1, otherwise uncompressed UTF-8 iTXt.
+function pngWithText(bytes, meta) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const ihdrEnd = 8 + 12 + dv.getUint32(8);
+  const latin1Bytes = s => Uint8Array.from(s, c => c.charCodeAt(0));
+  const chunks = Object.entries(meta).map(([key, text]) => {
+    const isLatin1 = !/[^\u0000-ÿ]/.test(text);
+    const type = isLatin1 ? "tEXt" : "iTXt";
+    const data = isLatin1
+      ? concatBytes([latin1Bytes(key), [0], latin1Bytes(text)])
+      : concatBytes([latin1Bytes(key), [0, 0, 0, 0, 0], enc.encode(text)]); // \0, not compressed, method 0, no language, no translated key
+    const chunk = new Uint8Array(12 + data.length);
+    const cdv = new DataView(chunk.buffer);
+    cdv.setUint32(0, data.length);
+    chunk.set(latin1Bytes(type), 4);
+    chunk.set(data, 8);
+    cdv.setUint32(8 + data.length, crc32(chunk.subarray(4, 8 + data.length)));
+    return chunk;
+  });
+  return concatBytes([bytes.subarray(0, ihdrEnd), ...chunks, bytes.subarray(ihdrEnd)]);
+}
+
+// JPEG: an APP1 "Exif" segment after SOI (and after the JFIF APP0, if any). A segment holds at most 64 KB.
+function jpegWithExif(bytes, tiff) {
+  let at = 2;
+  if (bytes[2] === 0xFF && bytes[3] === 0xE0) at = 4 + (bytes[4] << 8 | bytes[5]);
+  const len = 2 + 6 + tiff.length;
+  if (len > 0xFFFF) throw new Error(`The metadata is ${fmtBytes(tiff.length)}, but JPEG can only hold 64 KB of EXIF. Pick another output format for this image.`);
+  const head = new Uint8Array([0xFF, 0xE1, len >> 8, len & 255, 0x45, 0x78, 0x69, 0x66, 0, 0]); // "Exif\0\0"
+  return concatBytes([bytes.subarray(0, at), head, tiff, bytes.subarray(at)]);
+}
+
+// AVIF (HEIF): adds an "Exif" item. The meta box gets a new infe entry, an iloc entry pointing at
+// the data (appended in a new mdat box) and a cdsc reference to the primary image. The meta box
+// grows, so every iloc offset that points past it is shifted by the same amount.
+function avifWithExif(bytes, tiff) {
+  const u32 = (b, o) => (b[o] << 24 | b[o + 1] << 16 | b[o + 2] << 8 | b[o + 3]) >>> 0;
+  const u16 = (b, o) => b[o] << 8 | b[o + 1];
+  const uN = (b, o, n) => n === 0 ? 0 : n === 2 ? u16(b, o) : n === 4 ? u32(b, o) : u32(b, o) * 2 ** 32 + u32(b, o + 4);
+  const type = (b, o) => latin1.decode(b.subarray(o, o + 4));
+  const boxes = (b, from, to) => {
+    const out = [];
+    for (let p = from; p + 8 <= to;) {
+      let size = u32(b, p), hdr = 8;
+      if (size === 1) { size = uN(b, p + 8, 8); hdr = 16; } else if (size === 0) size = to - p;
+      out.push({ type: type(b, p + 4), at: p, body: p + hdr, end: p + size });
+      p += size;
+    }
+    return out;
+  };
+  const be = (n, size) => { const a = new Uint8Array(size); for (let i = size - 1; i >= 0; i--) { a[i] = n & 255; n = Math.floor(n / 256); } return a; };
+  const latin1Bytes4 = t => Uint8Array.from(t, c => c.charCodeAt(0));
+  const box = (t, ...parts) => { const body = concatBytes(parts); return concatBytes([be(8 + body.length, 4), latin1Bytes4(t), body]); };
+  const fullBox = (t, version, ...parts) => box(t, new Uint8Array([version, 0, 0, 0]), ...parts);
+
+  const meta = boxes(bytes, 0, bytes.length).find(b => b.type === "meta");
+  if (!meta) throw new Error("AVIF has no meta box");
+  const children = boxes(bytes, meta.body + 4, meta.end);
+
+  // Existing items and their locations.
+  const iloc = children.find(c => c.type === "iloc");
+  const v = bytes[iloc.body];
+  let o = iloc.body + 4;
+  const offSize = bytes[o] >> 4, lenSize = bytes[o] & 15, baseSize = bytes[o + 1] >> 4, idxSize = v ? bytes[o + 1] & 15 : 0;
+  o += 2;
+  const count = v < 2 ? u16(bytes, o) : u32(bytes, o); o += v < 2 ? 2 : 4;
+  const items = [];
+  for (let i = 0; i < count; i++) {
+    const id = v < 2 ? u16(bytes, o) : u32(bytes, o); o += v < 2 ? 2 : 4;
+    let method = 0;
+    if (v === 1 || v === 2) { method = u16(bytes, o) & 15; o += 2; }
+    const dataRef = u16(bytes, o); o += 2;
+    const base = uN(bytes, o, baseSize); o += baseSize;
+    const n = u16(bytes, o); o += 2;
+    const extents = [];
+    for (let k = 0; k < n; k++) {
+      o += idxSize;
+      const off = uN(bytes, o, offSize); o += offSize;
+      const len = uN(bytes, o, lenSize); o += lenSize;
+      extents.push([base + off, len]);
+    }
+    items.push({ id, method, dataRef, extents });
+  }
+  const pitm = children.find(c => c.type === "pitm");
+  const primary = bytes[pitm.body] === 0 ? u16(bytes, pitm.body + 4) : u32(bytes, pitm.body + 4);
+  const iinf = children.find(c => c.type === "iinf");
+  const iinfV = bytes[iinf.body];
+  const infes = boxes(bytes, iinf.body + 4 + (iinfV === 0 ? 2 : 4), iinf.end);
+  const oldIref = children.find(c => c.type === "iref");
+  const exifId = Math.max(0, ...items.map(i => i.id)) + 1;
+  if (exifId > 0xFFFF || primary > 0xFFFF) throw new Error("Unsupported AVIF layout (item IDs above 65535)");
+
+  const payload = concatBytes([be(0, 4), tiff]); // 4-byte offset to the TIFF header, then the TIFF
+  const build = delta => {
+    const shift = off => off >= meta.end ? off + delta : off; // only data stored after the meta box moves
+    const all = [...items.map(it => ({ ...it, extents: it.method === 0 ? it.extents.map(([off, len]) => [shift(off), len]) : it.extents })),
+      { id: exifId, method: 0, dataRef: 0, extents: [[bytes.length + delta + 8, payload.length]] }];
+    const ilocV = v === 0 ? 0 : 1;
+    const ilocBody = [new Uint8Array([0x44, 0x00]), be(all.length, 2)];
+    for (const it of all) {
+      ilocBody.push(be(it.id, 2));
+      if (ilocV === 1) ilocBody.push(be(it.method, 2));
+      ilocBody.push(be(it.dataRef, 2), be(it.extents.length, 2));
+      for (const [off, len] of it.extents) ilocBody.push(be(off, 4), be(len, 4));
+    }
+    const newIloc = fullBox("iloc", ilocV, ...ilocBody);
+    const newInfe = fullBox("infe", 2, be(exifId, 2), be(0, 2), latin1Bytes4("Exif"), new Uint8Array([0]));
+    const newIinf = fullBox("iinf", 0, be(infes.length + 1, 2), ...infes.map(b => bytes.subarray(b.at, b.end)), newInfe);
+    // iref version 0 uses 16-bit item IDs, version 1 uses 32-bit.
+    const idSize = oldIref && bytes[oldIref.body] === 1 ? 4 : 2;
+    const cdsc = box("cdsc", be(exifId, idSize), be(1, 2), be(primary, idSize));
+    const newIref = oldIref ? box("iref", bytes.subarray(oldIref.body, oldIref.end), cdsc) : fullBox("iref", 0, cdsc);
+    const parts = [];
+    for (const c of children) {
+      if (c.type === "iloc") parts.push(newIloc);
+      else if (c.type === "iinf") { parts.push(newIinf); if (!oldIref) parts.push(newIref); }
+      else if (c.type === "iref") parts.push(newIref);
+      else parts.push(bytes.subarray(c.at, c.end));
+    }
+    return fullBox("meta", 0, ...parts);
+  };
+  const oldSize = meta.end - meta.at;
+  const newMeta = build(build(0).length - oldSize); // sizes don't depend on the offsets, so two passes suffice
+  return concatBytes([bytes.subarray(0, meta.at), newMeta, bytes.subarray(meta.end), box("mdat", payload)]);
 }
 
 // Adds or replaces metadata chunks. extra: {ICCP?, EXIF?, "XMP "?} -> Uint8Array
@@ -1160,7 +1361,16 @@ function addConvertFiles(list) {
   fillMeta([...convertPngs.values()].sort(byPath).map(x => x.file), renderConvertSoon);
 }
 
-// Output path: same subfolder, file name from the template, always .webp.
+// Output formats and which options apply to each.
+const FORMATS = {
+  webp: { label: "WebP", ext: "webp", kind: "webp", modes: ["lossless", "lossy"], effort: true, sharp: true, quality: 90 },
+  avif: { label: "AVIF", ext: "avif", kind: "avif", modes: ["lossless", "lossy"], effort: true, sharp: true, quality: 65 },
+  jpeg: { label: "JPEG", ext: "jpg", kind: "jpg", modes: ["lossy"], effort: false, background: true, quality: 90 },
+  png: { label: "PNG", ext: "png", kind: "png", modes: ["lossless"], effort: true },
+};
+function outFormat() { return document.querySelector('input[name="ofmt"]:checked').value; }
+
+// Output path: same subfolder, file name from the template, extension from the output format.
 function qToken() { return lossless() ? "lossless" : "q" + el("quality").value; }
 function outputPath(path) {
   const rel = relPath(path);
@@ -1168,10 +1378,12 @@ function outputPath(path) {
   const stem = rel.slice(slash + 1).replace(/\.[^.]+$/, "");
   const tpl = el("nameTpl").value.trim() || "{name}";
   const name = tpl.replaceAll("{name}", stem).replaceAll("{q}", qToken()).replace(/[\\/:*?"<>|]/g, "_");
-  return rel.slice(0, slash + 1) + name + ".webp";
+  return rel.slice(0, slash + 1) + name + "." + FORMATS[outFormat()].ext;
 }
-// True when a WebP input would be written under its own name.
-function overwritesSelf(path) { return isWebpFile({ name: path }) && outputPath(path).toLowerCase() === relPath(path).toLowerCase(); }
+// True when an input already in the output format would be written under its own name.
+function overwritesSelf(path) {
+  return fileKind(path) === FORMATS[outFormat()].kind && outputPath(path).toLowerCase() === relPath(path).toLowerCase();
+}
 
 // Inputs whose output path is already taken by an earlier input (e.g. a.png and a.webp): path -> first path.
 function outputClashes(list) {
@@ -1186,8 +1398,11 @@ function outputClashes(list) {
 function updateNameUI() {
   const list = [...convertPngs.values()].sort(byPath);
   const sample = list[0]?.path || "ComfyUI_00001_.png";
+  const f = FORMATS[outFormat()];
+  el("extLabel").textContent = "." + f.ext;
   el("namePreview").textContent = baseName(outputPath(sample));
   el("nameWarn").hidden = !list.some(x => overwritesSelf(x.path));
+  el("nameWarn").innerHTML = `${f.label} inputs keep their name. Saving into their own folder will replace the originals, and “Skip files already in the output folder” will skip them all. Add a suffix like <code>{name}_{q}</code> or pick another folder.`;
   const clashes = outputClashes(list);
   el("clashWarn").hidden = !clashes.size;
   if (clashes.size) {
@@ -1229,40 +1444,85 @@ const renderConvertSoon = throttled(renderConvert);
 // Effort 0–9 follows cwebp's -z presets for lossless: [method, quality].
 const LOSSLESS_PRESETS = [[0, 0], [1, 20], [2, 25], [3, 30], [3, 50], [4, 50], [4, 75], [4, 90], [5, 90], [6, 100]];
 
-function lossless() { return document.querySelector('input[name="cmode"]:checked').value === "lossless"; }
-
-function encodeOptions() {
-  const level = +el("effort").value;
-  if (lossless()) {
-    const [method, quality] = LOSSLESS_PRESETS[level];
-    return { lossless: 1, exact: 1, method, quality };
-  }
-  return { lossless: 0, quality: +el("quality").value, method: Math.round(level * 6 / 9), use_sharp_yuv: el("sharpYuv").checked ? 1 : 0 };
+// JPEG is always lossy and PNG always lossless; WebP and AVIF follow the Compression switch.
+function lossless() {
+  const modes = FORMATS[outFormat()].modes;
+  if (modes.length === 1) return modes[0] === "lossless";
+  return document.querySelector('input[name="cmode"]:checked').value === "lossless";
 }
 
+function hexToRgb(hex) { const n = parseInt(hex.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+
+function encodeOptions() {
+  const format = outFormat(), level = +el("effort").value, quality = +el("quality").value, sharp = el("sharpYuv").checked;
+  if (format === "webp") {
+    if (lossless()) {
+      const [method, q] = LOSSLESS_PRESETS[level];
+      return { lossless: 1, exact: 1, method, quality: q };
+    }
+    return { lossless: 0, quality, method: Math.round(level * 6 / 9), use_sharp_yuv: sharp ? 1 : 0 };
+  }
+  if (format === "avif") {
+    const speed = Math.min(10, Math.max(2, 12 - level)); // effort 6 = libavif's default speed 6
+    return lossless() ? { lossless: true, speed } : { quality, speed, enableSharpYUV: sharp };
+  }
+  if (format === "jpeg") return { quality, background: hexToRgb(el("bgColor").value) };
+  return { level: Math.round(level * 6 / 9) }; // png: oxipng level 0–6
+}
+
+const HINTS = {
+  webp: {
+    lossless: "Pixel-identical to the source image. Higher effort makes slightly smaller files but takes longer. Re-encoding an already-lossy image losslessly usually makes it bigger.",
+    lossy: "Much smaller files with a small loss of detail. 90 is a good default; 95+ is very hard to tell from the original.",
+  },
+  avif: {
+    lossless: "Pixel-identical to the source, but usually bigger than lossless WebP. AVIF is at its best in lossy mode.",
+    lossy: "Smallest files for how they look. AVIF's quality scale runs lower than WebP/JPEG: 60–75 is already close to the original. Encoding is slower; lower effort is faster.",
+  },
+  jpeg: { lossy: "Works everywhere. No transparency, so transparent areas get the background colour. 85–92 is typical. JPEG holds at most 64 KB of metadata, so very large ComfyUI workflows won't fit." },
+  png: { lossless: "Lossless and supported everywhere, but the biggest files. Effort sets how hard oxipng optimises; high levels are much slower." },
+};
+
+// Remembered per output format, since the useful range differs (e.g. AVIF 65 ≈ WebP 90).
+const qualityByFormat = { webp: 90, avif: 65, jpeg: 90 };
+let shownFormat = null;
+
 function updateOptionsUI() {
+  const format = outFormat(), f = FORMATS[format];
+  if (shownFormat !== format) { // switching format: show that format's quality
+    if (f.quality) el("quality").value = qualityByFormat[format] ?? f.quality;
+    shownFormat = format;
+  } else if (f.quality) qualityByFormat[format] = +el("quality").value;
   const ll = lossless();
-  for (const id of ["qualityKey", "qualityRow", "sharpKey", "sharpRow"]) el(id).hidden = ll;
+  el("cmodeKey").hidden = el("cmodeRow").hidden = f.modes.length < 2;
+  el("qualityKey").hidden = el("qualityRow").hidden = ll;
+  el("effortKey").hidden = el("effortRow").hidden = !f.effort;
+  el("sharpKey").hidden = el("sharpRow").hidden = ll || !f.sharp;
+  el("bgKey").hidden = el("bgRow").hidden = !f.background;
   el("qualityOut").textContent = el("quality").value;
   el("effortOut").textContent = el("effort").value;
-  el("modeHint").textContent = ll
-    ? "Pixel-identical to the source image. Higher effort makes slightly smaller files but takes longer. Re-encoding an already-lossy WebP losslessly usually makes it bigger."
-    : "Much smaller files with a small loss of detail. 90 is a good default; 95+ is very hard to tell from the original.";
+  el("bgHex").textContent = el("bgColor").value;
+  el("modeHint").textContent = HINTS[format][ll ? "lossless" : "lossy"];
   updateNameUI();
   store.set("settings", {
-    mode: ll ? "lossless" : "lossy", quality: +el("quality").value, effort: +el("effort").value, sharp: el("sharpYuv").checked,
-    nameTpl: el("nameTpl").value,
+    format, mode: document.querySelector('input[name="cmode"]:checked').value, qualityByFormat,
+    effort: +el("effort").value, sharp: el("sharpYuv").checked, background: el("bgColor").value, nameTpl: el("nameTpl").value,
   });
 }
 (() => {
   const s = store.get("settings", null);
   if (s) {
+    const fmtRadio = document.querySelector(`input[name="ofmt"][value="${s.format}"]`);
+    if (fmtRadio) fmtRadio.checked = true;
     const radio = document.querySelector(`input[name="cmode"][value="${s.mode}"]`);
     if (radio) radio.checked = true;
-    el("quality").value = s.quality; el("effort").value = s.effort; el("sharpYuv").checked = s.sharp;
+    if (s.qualityByFormat) Object.assign(qualityByFormat, s.qualityByFormat);
+    else if (s.quality) qualityByFormat.webp = s.quality; // settings saved before AVIF/JPEG/PNG output existed
+    el("effort").value = s.effort; el("sharpYuv").checked = s.sharp;
+    if (/^#[0-9a-f]{6}$/i.test(s.background || "")) el("bgColor").value = s.background;
     if (typeof s.nameTpl === "string") el("nameTpl").value = s.nameTpl;
   }
-  document.querySelectorAll('input[name="cmode"], #quality, #effort, #sharpYuv, #nameTpl').forEach(i => i.addEventListener("input", updateOptionsUI));
+  document.querySelectorAll('input[name="ofmt"], input[name="cmode"], #quality, #effort, #sharpYuv, #bgColor, #nameTpl').forEach(i => i.addEventListener("input", updateOptionsUI));
   // Token buttons insert at the cursor.
   document.querySelectorAll(".token").forEach(b => b.addEventListener("click", () => {
     const input = el("nameTpl"), t = b.dataset.token;
@@ -1274,7 +1534,7 @@ function updateOptionsUI() {
   updateOptionsUI();
 })();
 
-// Worker pool: each worker holds one libwebp instance and handles one image at a time.
+// Worker pool: each worker holds its own encoder instances and handles one image at a time.
 let workerUrl = null;
 let workers = [];
 const poolSize = Math.max(1, Math.min(6, (navigator.hardwareConcurrency || 4) - 1));
@@ -1325,6 +1585,7 @@ el("btnStop").addEventListener("click", () => {
 async function convertAll(sink, exists) {
   const list = [...convertPngs.values()].sort(byPath);
   const clashes = outputClashes(list);
+  const format = outFormat();
   const opts = encodeOptions();
   let next = 0, done = 0, skipped = 0, failed = 0, inBytes = 0, outBytes = 0;
   const started = performance.now();
@@ -1360,17 +1621,9 @@ async function convertAll(sink, exists) {
         if (info?.animated) throw new Error("Animated WebP isn't supported");
         const buf = await file.arrayBuffer();
         const kind = fileKind(file.name);
-        const { webp } = await worker.run({ buf, opts, kind: kind === "jpg" || kind === "avif" ? "image" : kind }, [buf]);
-        let data, note = "";
-        if (isWebp) {
-          // Carry over the source's EXIF (workflow/parameters), XMP and colour profile as-is.
-          data = Object.keys(info.keep).length ? withChunks(webp.buffer, info.keep) : webp;
-          if (!info.keep.EXIF) note = " · no metadata in source";
-        } else {
-          const exif = buildExif(meta);
-          data = exif ? writeWebp(webp.buffer, exif) : webp;
-          if (!exif) note = " · no metadata in source";
-        }
+        const { bytes } = await worker.run({ buf, opts, format, kind: kind === "jpg" || kind === "avif" ? "image" : kind }, [buf]);
+        const data = addMetadata(format, bytes, meta, info);
+        const note = Object.keys(meta).length ? "" : " · no metadata in source";
         await sink(out, data);
         done++; inBytes += file.size; outBytes += data.length;
         // Green when it shrank, amber when the output came out bigger than the source.
@@ -1392,6 +1645,21 @@ async function convertAll(sink, exists) {
 }
 function pct(a, b) { const d = Math.abs(Math.round((1 - b / a) * 100)); return b < a ? `−${d}%` : `+${d}%`; }
 
+// Writes the generation metadata the way each app stores it in that format.
+function addMetadata(format, bytes, meta, webpSource) {
+  if (format === "webp" && webpSource) {
+    // WebP → WebP: carry over the source's EXIF, XMP and colour profile as-is.
+    return Object.keys(webpSource.keep).length ? withChunks(bytes.buffer, webpSource.keep) : bytes;
+  }
+  if (!Object.keys(meta).length) return bytes;
+  if (format === "png") return pngWithText(bytes, meta);
+  const exif = buildExif(meta);
+  if (!exif) return bytes;
+  if (format === "webp") return writeWebp(bytes.buffer, exif);
+  if (format === "jpeg") return jpegWithExif(bytes, exif);
+  return avifWithExif(bytes, exif);
+}
+
 el("btnConvertFolder").addEventListener("click", async () => {
   const dir = await pickDir("webp-convert-out");
   if (!dir) return;
@@ -1402,7 +1670,7 @@ el("btnConvertFolder").addEventListener("click", async () => {
 el("btnConvertZip").addEventListener("click", async () => {
   const files = [];
   const n = await convertAll(async (name, data) => { files.push({ name, data }); }, null);
-  if (n) downloadZip(files, "webp-converted.zip");
+  if (n) downloadZip(files, "converted-images.zip");
 });
 
 el("btnClearConvert").addEventListener("click", () => {
