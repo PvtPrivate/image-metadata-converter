@@ -51,7 +51,7 @@
     background: color-mix(in srgb, var(--accent) 12%, var(--panel)); display: none; align-items: center;
     justify-content: center; font-weight: 600; color: var(--accent); pointer-events: none; z-index: 1; }
   .files.over .drop-overlay { display: flex; }
-  .row { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto 32px; gap: 4px 12px; align-items: center;
+  .row { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto auto; gap: 4px 12px; align-items: center;
     padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--border); }
   .row:last-child { border-bottom: 0; }
   .thumb { width: 52px; height: 52px; border-radius: 6px; background: var(--chip); overflow: hidden; }
@@ -61,12 +61,15 @@
   .info .name { word-break: break-all; }
   .info .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .status { font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
-  .remove { width: 28px; height: 28px; padding: 0; border: 0; background: none; color: var(--muted);
-    font-size: 18px; line-height: 1; border-radius: 6px; }
+  .row-actions { display: flex; gap: 2px; }
+  .remove, .dl { width: 28px; height: 28px; padding: 0; border: 0; background: none; color: var(--muted);
+    font-size: 18px; line-height: 1; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; }
   .remove:hover:not(:disabled) { background: var(--chip); color: var(--err); }
-  body.busy .remove { visibility: hidden; }
+  .dl:hover:not(:disabled) { background: var(--chip); color: var(--accent); }
+  .dl svg { width: 16px; height: 16px; }
+  body.busy .remove, body.busy .dl { visibility: hidden; }
   @media (max-width: 640px) {
-    .row { grid-template-columns: 52px minmax(0, 1fr) 32px; }
+    .row { grid-template-columns: 52px minmax(0, 1fr) auto; }
     .status { grid-column: 2; grid-row: 2; text-align: left; }
   }
   button { font: inherit; border: 1px solid var(--border); background: var(--panel); color: var(--text);
@@ -1268,12 +1271,17 @@ const thumbObserver = new IntersectionObserver(entries => {
 }, { rootMargin: "200px" });
 
 // Keyed list: rows are created once and updated in place, so thumbnails survive re-renders.
-// items: [{key, file, name, sub (html), status (html)}]
-function makeList(container, onRemove) {
+// items: [{key, file, name, sub (html), status (html), canDownload}]
+// onDownload (optional) adds a per-row download button, shown where canDownload is true.
+const DOWNLOAD_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg>`;
+function makeList(container, onRemove, onDownload) {
   const rows = new Map();
   container.addEventListener("click", e => {
-    const btn = e.target.closest(".remove");
-    if (btn && !busy) onRemove(btn.closest(".row").dataset.key);
+    if (busy) return;
+    const rm = e.target.closest(".remove");
+    if (rm) return onRemove(rm.closest(".row").dataset.key);
+    const dl = e.target.closest(".dl");
+    if (dl && onDownload && !dl.disabled) onDownload(dl.closest(".row").dataset.key, dl);
   });
   return function sync(items) {
     const keep = new Set();
@@ -1285,14 +1293,16 @@ function makeList(container, onRemove) {
         const row = document.createElement("div");
         row.className = "row";
         row.dataset.key = it.key;
-        row.innerHTML = `<div class="thumb"><img alt=""></div><div class="info"><div class="name"></div><div class="sub"></div></div><div class="status"></div><button class="remove" title="Remove" aria-label="Remove">×</button>`;
-        r = { el: row, img: row.querySelector("img"), name: row.querySelector(".name"), sub: row.querySelector(".sub"), status: row.querySelector(".status"), last: {} };
+        row.innerHTML = `<div class="thumb"><img alt=""></div><div class="info"><div class="name"></div><div class="sub"></div></div><div class="status"></div>` +
+          `<div class="row-actions">${onDownload ? `<button class="dl" title="Download this file" aria-label="Download">${DOWNLOAD_ICON}</button>` : ""}<button class="remove" title="Remove" aria-label="Remove">×</button></div>`;
+        r = { el: row, img: row.querySelector("img"), name: row.querySelector(".name"), sub: row.querySelector(".sub"), status: row.querySelector(".status"), dl: row.querySelector(".dl"), last: {} };
         r.img._row = r;
         rows.set(it.key, r);
       }
       if (r.last.name !== it.name) r.name.textContent = r.last.name = it.name;
       if (r.last.sub !== it.sub) r.sub.innerHTML = r.last.sub = it.sub;
       if (r.last.status !== it.status) r.status.innerHTML = r.last.status = it.status;
+      if (r.dl) r.dl.hidden = !it.canDownload;
       if (r.file !== it.file) { r.file = it.file; r.img.removeAttribute("src"); thumbObserver.observe(r.img); }
       const expected = prev ? prev.nextSibling : container.firstChild;
       if (expected !== r.el) container.insertBefore(r.el, expected);
@@ -1486,7 +1496,7 @@ const syncConvertList = makeList(el("listConvert"), key => {
   convertStatus.delete(item.path);
   forgetResults(item.path);
   renderConvert();
-});
+}, downloadConverted);
 
 function renderConvert() {
   const list = [...convertPngs.values()].sort(byPath);
@@ -1500,7 +1510,7 @@ function renderConvert() {
   syncConvertList(list.map(({ key, file, path }) => {
     const st = convertStatus.get(path);
     return {
-      key, file, name: path,
+      key, file, name: path, canDownload: true,
       sub: `${fmtBytes(file.size)} · ${metaCell(file)}`,
       status: st ? `<span class="${st.cls}">${esc(st.text)}</span>` : "",
     };
@@ -1693,6 +1703,69 @@ function forgetResults(path) {
   for (const [k, d] of resultCache) if (k.startsWith(prefix)) { resultCache.delete(k); resultCacheBytes -= d.length; }
 }
 
+// Converts one file (or takes it from the result cache): {data, meta, fromCache}.
+// onEncoding is called only when it actually has to encode.
+async function produceOutput(worker, file, path, format, opts, onEncoding) {
+  const meta = await loadMeta(file);
+  if (meta instanceof Error) throw meta;
+  const key = resultKey(file, path, format, opts);
+  const cached = cacheGet(key);
+  if (cached) return { data: cached, meta, fromCache: true };
+  onEncoding?.();
+  const info = isWebpFile(file) ? webpInfo.get(file) : null;
+  if (info?.animated) throw new Error("Animated WebP isn't supported");
+  const buf = await file.arrayBuffer();
+  const kind = fileKind(file.name);
+  const { bytes } = await worker.run({ buf, opts, format, kind: kind === "jpg" || kind === "avif" ? "image" : kind }, [buf]);
+  const data = addMetadata(format, bytes, meta, info);
+  cachePut(key, data); // before saving, so a failed save can be retried without encoding
+  return { data, meta, fromCache: false };
+}
+
+// Green when it shrank, amber when the output came out bigger than the source.
+function resultStatus(file, { data, meta, fromCache }) {
+  const note = (Object.keys(meta).length ? "" : " · no metadata in source") + (fromCache ? " · reused" : "");
+  return { cls: data.length < file.size ? "ok" : "warn", text: `${fmtBytes(file.size)} → ${fmtBytes(data.length)} (${pct(file.size, data.length)})` + note };
+}
+
+const MIME = { webp: "image/webp", avif: "image/avif", jpeg: "image/jpeg", png: "image/png" };
+function saveBlob(data, name, type) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([data], { type }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+
+// Single-file downloads from the list rows use their own worker, one job at a time.
+let singleWorker = null, singleChain = Promise.resolve();
+function runSingle(job) {
+  const p = singleChain.then(job);
+  singleChain = p.catch(() => {});
+  return p;
+}
+
+async function downloadConverted(key, btn) {
+  const item = convertPngs.get(key);
+  if (!item) return;
+  const { file, path } = item;
+  const format = outFormat(), opts = encodeOptions(), name = baseName(outputPath(path));
+  btn.disabled = true;
+  try {
+    const r = await runSingle(() => {
+      singleWorker ||= makeWorker();
+      return produceOutput(singleWorker, file, path, format, opts, () => { convertStatus.set(path, { cls: "", text: "Encoding…" }); renderConvertSoon(); });
+    });
+    saveBlob(r.data, name, MIME[format]);
+    convertStatus.set(path, resultStatus(file, r));
+  } catch (e) {
+    convertStatus.set(path, { cls: "err", text: "Error: " + e.message });
+  } finally {
+    btn.disabled = false;
+    renderConvert();
+  }
+}
+
 // sink(rel, data) writes one output; exists(rel) says whether to skip it.
 async function convertAll(sink, exists) {
   const list = [...convertPngs.values()].sort(byPath);
@@ -1726,27 +1799,11 @@ async function convertAll(sink, exists) {
           convertStatus.set(path, { cls: "muted", text: "Skipped: already exists" }); skipped++;
           continue;
         }
-        const meta = await loadMeta(file);
-        if (meta instanceof Error) throw meta;
-        const key = resultKey(file, path, format, opts);
-        let data = cacheGet(key);
-        const fromCache = !!data;
-        if (!data) {
-          convertStatus.set(path, { cls: "", text: "Encoding…" }); renderConvertSoon();
-          const info = isWebp ? webpInfo.get(file) : null;
-          if (info?.animated) throw new Error("Animated WebP isn't supported");
-          const buf = await file.arrayBuffer();
-          const kind = fileKind(file.name);
-          const { bytes } = await worker.run({ buf, opts, format, kind: kind === "jpg" || kind === "avif" ? "image" : kind }, [buf]);
-          data = addMetadata(format, bytes, meta, info);
-          cachePut(key, data); // before saving, so a failed save can be retried without encoding
-        }
-        const note = (Object.keys(meta).length ? "" : " · no metadata in source") + (fromCache ? " · reused" : "");
-        await sink(out, data);
-        done++; if (fromCache) reused++;
-        inBytes += file.size; outBytes += data.length;
-        // Green when it shrank, amber when the output came out bigger than the source.
-        convertStatus.set(path, { cls: data.length < file.size ? "ok" : "warn", text: `${fmtBytes(file.size)} → ${fmtBytes(data.length)} (${pct(file.size, data.length)})` + note });
+        const r = await produceOutput(worker, file, path, format, opts, () => { convertStatus.set(path, { cls: "", text: "Encoding…" }); renderConvertSoon(); });
+        await sink(out, r.data);
+        done++; if (r.fromCache) reused++;
+        inBytes += file.size; outBytes += r.data.length;
+        convertStatus.set(path, resultStatus(file, r));
       } catch (e) {
         if (stopRequested) convertStatus.set(path, { cls: "muted", text: "Stopped" });
         else { convertStatus.set(path, { cls: "err", text: "Error: " + e.message }); failed++; }
@@ -1877,7 +1934,7 @@ const syncTargetList = makeList(el("listTargets"), key => {
   manualSource.delete(key);
   status.delete(key);
   renderTransfer();
-});
+}, downloadRestored);
 
 function renderTransfer() {
   const matches = matchSources();
@@ -1917,7 +1974,7 @@ function renderTransfer() {
         : hasGenMeta(own) ? { cls: "muted", text: el("optSkip").checked ? "Already has metadata" : "Ready (replaces metadata)" }
         : { cls: "", text: "Ready" });
     return {
-      key: t.key, file: t.file, name: t.path,
+      key: t.key, file: t.file, name: t.path, canDownload: !!src,
       sub: `Metadata from ${pick}` + (srcMeta && hasGenMeta(srcMeta) ? " · " + metaCell(src.file) : ""),
       status: `<span class="${st.cls}">${esc(st.text)}</span>`,
     };
@@ -1953,14 +2010,34 @@ el("listTargets").addEventListener("click", e => {
 });
 
 // Returns the fixed file, or a reason string for skipping.
-async function restoreOne(t, src) {
+// skipExisting: honour "Skip files that already have metadata" (a single download doesn't).
+async function restoreOne(t, src, skipExisting = el("optSkip").checked) {
   const meta = await loadMeta(src.file);
   if (meta instanceof Error) throw new Error("Can't read original: " + meta.message);
   if (!hasGenMeta(meta)) return "original has no metadata";
   const own = await loadMeta(t.file);
-  if (el("optSkip").checked && hasGenMeta(own)) return "already has metadata";
+  if (skipExisting && hasGenMeta(own)) return "already has metadata";
   const bytes = new Uint8Array(await t.file.arrayBuffer());
   return addMetadata(TARGET_FORMAT[fileKind(t.file.name)], bytes, meta, null);
+}
+
+async function downloadRestored(key, btn) {
+  const t = targets.get(key), src = matchSources().get(key);
+  if (!t || !src) return;
+  btn.disabled = true;
+  try {
+    const r = await restoreOne(t, src, false);
+    if (typeof r === "string") status.set(key, { cls: "muted", text: "Not downloaded: " + r });
+    else {
+      saveBlob(r, baseName(t.path), MIME[TARGET_FORMAT[fileKind(t.file.name)]]);
+      status.set(key, { cls: "ok", text: "Downloaded" });
+    }
+  } catch (e) {
+    status.set(key, { cls: "err", text: "Error: " + e.message });
+  } finally {
+    btn.disabled = false;
+    renderTransfer();
+  }
 }
 
 async function transferAll(sink) {
