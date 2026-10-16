@@ -2,7 +2,7 @@
 
 A single-file browser tool that converts ComfyUI and Automatic1111 images between WebP, AVIF, JPEG and PNG without losing their generation metadata: the ComfyUI workflow and prompt, or the A1111 `parameters` text.
 
-Open `image-converter.html` in Chrome or Edge. Nothing to install, and images never leave your computer.
+Open `index.html` in Chrome or Edge. Nothing to install, and images never leave your computer.
 
 ## Features
 
