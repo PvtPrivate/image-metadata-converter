@@ -1526,13 +1526,15 @@ function addConvertFiles(list) {
   fillMeta([...convertPngs.values()].sort(byPath).map(x => x.file), renderConvertSoon);
 }
 
-// Output formats and which options apply to each.
+// Output formats and which options apply to each. effort: slider range and default.
+const EFFORT_0_9 = { min: 0, max: 9, def: 6 };
 const FORMATS = {
-  webp: { label: "WebP", ext: "webp", kind: "webp", modes: ["lossless", "lossy"], effort: true, sharp: true, quality: 90 },
-  avif: { label: "AVIF", ext: "avif", kind: "avif", modes: ["lossless", "lossy"], effort: true, sharp: true, quality: 65 },
-  jxl: { label: "JPEG XL", ext: "jxl", kind: "jxl", modes: ["lossless", "lossy"], effort: true, quality: 90 },
-  jpeg: { label: "JPEG", ext: "jpg", kind: "jpg", modes: ["lossy"], effort: false, background: true, quality: 90 },
-  png: { label: "PNG", ext: "png", kind: "png", modes: ["lossless"], effort: true },
+  webp: { label: "WebP", ext: "webp", kind: "webp", modes: ["lossless", "lossy"], effort: EFFORT_0_9, sharp: true, quality: 90 },
+  avif: { label: "AVIF", ext: "avif", kind: "avif", modes: ["lossless", "lossy"], effort: EFFORT_0_9, sharp: true, quality: 65 },
+  // libjxl's own effort scale. 8 and up take minutes per image in the single-threaded encoder for barely smaller files.
+  jxl: { label: "JPEG XL", ext: "jxl", kind: "jxl", modes: ["lossless", "lossy"], effort: { min: 1, max: 7, def: 4 }, quality: 90 },
+  jpeg: { label: "JPEG", ext: "jpg", kind: "jpg", modes: ["lossy"], background: true, quality: 90 },
+  png: { label: "PNG", ext: "png", kind: "png", modes: ["lossless"], effort: EFFORT_0_9 },
 };
 function outFormat() { return document.querySelector('input[name="ofmt"]:checked').value; }
 
@@ -1633,10 +1635,7 @@ function encodeOptions() {
     const speed = Math.min(10, Math.max(2, 12 - level)); // effort 6 = libavif's default speed 6
     return lossless() ? { lossless: true, speed } : { quality, speed, enableSharpYUV: sharp };
   }
-  if (format === "jxl") {
-    const effort = Math.min(9, level + 1); // libjxl effort 1–9 (10 needs expert options); effort 6 = its default 7
-    return lossless() ? { lossless: true, effort } : { quality, effort };
-  }
+  if (format === "jxl") return lossless() ? { lossless: true, effort: level } : { quality, effort: level };
   if (format === "jpeg") return { quality, background: hexToRgb(el("bgColor").value) };
   return { level: Math.round(level * 6 / 9) }; // png: oxipng level 0–6
 }
@@ -1651,15 +1650,17 @@ const HINTS = {
     lossy: "Smallest files for how they look. AVIF's quality scale runs lower than WebP/JPEG: 60–75 is already close to the original. Encoding is slower; lower effort is faster.",
   },
   jxl: {
-    lossless: "Pixel-identical to the source, and usually smaller than lossless WebP. Higher effort is slower; 8–9 is very slow on big images. Not every browser or app can open JPEG XL yet.",
-    lossy: "Small files that hold fine detail well. 90 is visually lossless for most images. Not every browser or app can open JPEG XL yet.",
+    lossless: "Pixel-identical to the source, and usually smaller than lossless WebP. Effort 1–3 is fast; 4 and up is a few percent smaller but several times slower. Not every browser or app can open JPEG XL yet.",
+    lossy: "Small files that hold fine detail well. 90 is visually lossless for most images. Effort 4 is usually best; higher is slower and rarely smaller. Not every browser or app can open JPEG XL yet.",
   },
   jpeg: { lossy: "Works everywhere. No transparency, so transparent areas get the background colour. 85–92 is typical. JPEG holds at most 64 KB of metadata, so very large ComfyUI workflows won't fit." },
   png: { lossless: "Lossless and supported everywhere, but the biggest files. Effort sets how hard oxipng optimises; high levels are much slower." },
 };
 
 // Remembered per output format, since the useful range differs (e.g. AVIF 65 ≈ WebP 90).
+// Effort too: its scale and speed differ (JPEG XL is far slower at the same number).
 const qualityByFormat = { webp: 90, avif: 65, jxl: 90, jpeg: 90 };
+const effortByFormat = {};
 let shownFormat = null;
 
 // Output name format, remembered per format + compression ("avif-lossy", "png-lossless", …).
@@ -1670,10 +1671,18 @@ let shownCombo = null;
 
 function updateOptionsUI() {
   const format = outFormat(), f = FORMATS[format];
-  if (shownFormat !== format) { // switching format: show that format's quality
+  if (shownFormat !== format) { // switching format: show that format's quality and effort
     if (f.quality) el("quality").value = qualityByFormat[format] ?? f.quality;
+    if (f.effort) {
+      const e = el("effort");
+      e.min = f.effort.min; e.max = f.effort.max;
+      e.value = Math.min(f.effort.max, Math.max(f.effort.min, effortByFormat[format] ?? f.effort.def));
+    }
     shownFormat = format;
-  } else if (f.quality) qualityByFormat[format] = +el("quality").value;
+  } else {
+    if (f.quality) qualityByFormat[format] = +el("quality").value;
+    if (f.effort) effortByFormat[format] = +el("effort").value;
+  }
   const ll = lossless();
   const combo = `${format}-${ll ? "lossless" : "lossy"}`;
   if (shownCombo !== combo) { // switching format or compression: show that combination's name format
@@ -1691,7 +1700,7 @@ function updateOptionsUI() {
   updateNameUI();
   store.set("settings", {
     format, mode: document.querySelector('input[name="cmode"]:checked').value, qualityByFormat,
-    effort: +el("effort").value, sharp: el("sharpYuv").checked, background: el("bgColor").value, nameByCombo, defaultNameTpl,
+    effortByFormat, sharp: el("sharpYuv").checked, background: el("bgColor").value, nameByCombo, defaultNameTpl,
   });
 }
 (() => {
@@ -1703,7 +1712,8 @@ function updateOptionsUI() {
     if (radio) radio.checked = true;
     if (s.qualityByFormat) Object.assign(qualityByFormat, s.qualityByFormat);
     else if (s.quality) qualityByFormat.webp = s.quality; // settings saved before AVIF/JPEG/PNG output existed
-    if (Number.isFinite(s.effort)) el("effort").value = s.effort;
+    if (s.effortByFormat) Object.assign(effortByFormat, s.effortByFormat);
+    else if (Number.isFinite(s.effort)) for (const k of ["webp", "avif", "png"]) effortByFormat[k] = s.effort; // single effort saved by earlier versions
     if (typeof s.sharp === "boolean") el("sharpYuv").checked = s.sharp;
     if (/^#[0-9a-f]{6}$/i.test(s.background || "")) el("bgColor").value = s.background;
     if (s.nameByCombo) Object.assign(nameByCombo, s.nameByCombo);

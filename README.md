@@ -12,10 +12,11 @@ Open `index.html` in Chrome or Edge. Nothing to install, and images never leave 
   |---|---|---|---|
   | WebP | lossless or lossy | libwebp | quality, effort, sharp YUV |
   | AVIF | lossless or lossy | libavif (aom) | quality, effort (encoder speed), sharp YUV |
-  | JPEG XL | lossless or lossy | libjxl | quality, effort |
+  | JPEG XL | lossless or lossy | libjxl | quality, effort (1–7; higher levels take minutes per image) |
   | JPEG | lossy | MozJPEG | quality, background colour for transparent areas |
   | PNG | lossless | oxipng | effort (optimisation level) |
 
+  - Quality and effort are remembered per format.
   - Output name format with `{name}` and `{q}` tokens, a "Saves as" preview, and warnings when names clash or would overwrite the source.
 - **Restore metadata**: for images converted or edited with another tool that dropped the metadata.
   - Two lists: **Originals** (any input format) and **Files to fix** (WebP, PNG, JPEG, AVIF or JPEG XL).
