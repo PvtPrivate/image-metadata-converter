@@ -10,11 +10,11 @@ Open `index.html` in Chrome or Edge. Nothing to install, and images never leave 
 
   | Output | Modes | Encoder | Options |
   |---|---|---|---|
-  | WebP | lossless or lossy | libwebp | quality, effort, sharp YUV |
-  | AVIF | lossless or lossy | libavif (aom) | quality, effort (encoder speed), sharp YUV |
+  | WebP | lossless or lossy | libwebp | quality, effort (0–9, as cwebp -z), sharp YUV |
+  | AVIF | lossless or lossy | libavif (aom) | quality, effort (1–4 = libavif speed 9–6), sharp YUV |
   | JPEG XL | lossless or lossy | libjxl | quality, effort (1–7; higher levels take minutes per image) |
   | JPEG | lossy | MozJPEG | quality, background colour for transparent areas |
-  | PNG | lossless | oxipng | effort (optimisation level) |
+  | PNG | lossless | oxipng | effort (oxipng level 0–6) |
 
   - Quality and effort are remembered per format.
   - Output name format with `{name}` and `{q}` tokens, a "Saves as" preview, and warnings when names clash or would overwrite the source.
