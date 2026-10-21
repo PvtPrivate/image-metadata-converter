@@ -119,7 +119,7 @@
 <body>
 <main>
   <h1>Image Converter</h1>
-  <p class="lead">Converts ComfyUI and A1111 images between WebP, AVIF, JPEG and PNG (EXR in too), keeping the workflow, prompt and generation parameters. Everything runs locally in your browser. Nothing is uploaded.</p>
+  <p class="lead">Converts ComfyUI and A1111 images between WebP, AVIF, JPEG XL, JPEG and PNG (EXR in too), keeping the workflow, prompt and generation parameters. Everything runs locally in your browser. Nothing is uploaded.</p>
 
   <nav class="tabs">
     <button class="tab active" data-tab="convert">Convert</button>
@@ -138,7 +138,7 @@
         </div>
       </div>
       <div class="list" id="listConvert"></div>
-      <div class="empty-drop"><strong>Drop images or folders here</strong>PNG, WebP, JPG, AVIF or EXR · or use Add folder / Add files</div>
+      <div class="empty-drop"><strong>Drop images or folders here</strong>PNG, WebP, JPG, AVIF, JPEG XL or EXR · or use Add folder / Add files</div>
       <div class="drop-overlay">Drop to add</div>
     </div>
 
@@ -147,6 +147,7 @@
       <div class="seg">
         <label><input type="radio" name="ofmt" value="webp" checked> WebP</label>
         <label><input type="radio" name="ofmt" value="avif"> AVIF</label>
+        <label><input type="radio" name="ofmt" value="jxl"> JPEG XL</label>
         <label><input type="radio" name="ofmt" value="jpeg"> JPEG</label>
         <label><input type="radio" name="ofmt" value="png"> PNG</label>
       </div>
@@ -200,7 +201,7 @@
           </div>
         </div>
         <div class="list" id="listSources"></div>
-        <div class="empty-drop"><strong>Drop the originals here</strong>images that still have the workflow or parameters<br>PNG, WebP, JPG, AVIF or EXR</div>
+        <div class="empty-drop"><strong>Drop the originals here</strong>images that still have the workflow or parameters<br>PNG, WebP, JPG, AVIF, JPEG XL or EXR</div>
         <div class="drop-overlay">Drop originals</div>
       </div>
       <div class="files empty" id="cardTargets">
@@ -213,7 +214,7 @@
           </div>
         </div>
         <div class="list" id="listTargets"></div>
-        <div class="empty-drop"><strong>Drop the files that lost their metadata</strong>WebP, PNG, JPG or AVIF</div>
+        <div class="empty-drop"><strong>Drop the files that lost their metadata</strong>WebP, PNG, JPG, AVIF or JPEG XL</div>
         <div class="drop-overlay">Drop files to fix</div>
       </div>
     </div>
@@ -229,11 +230,11 @@
   <details>
     <summary>How it works</summary>
     <ul>
-      <li><b>Encoders</b>: libwebp (WebP), libavif (AVIF), MozJPEG (JPEG) and oxipng (PNG), compiled to WebAssembly by the jSquash project and loaded from jsDelivr the first time each one is used, so that step needs an internet connection. Lossless output is pixel-identical to the source image.</li>
+      <li><b>Encoders</b>: libwebp (WebP), libavif (AVIF), libjxl (JPEG XL), MozJPEG (JPEG) and oxipng (PNG), compiled to WebAssembly by the jSquash project and loaded from jsDelivr the first time each one is used, so that step needs an internet connection. Lossless output is pixel-identical to the source image. JPEG XL inputs are decoded with libjxl too, since most browsers can't.</li>
       <li><b>WebP → WebP</b>: the source's EXIF (workflow/parameters), XMP and colour profile are copied over unchanged. Animated WebPs aren't supported.</li>
-      <li><b>WebP, AVIF and JPEG metadata</b>: written as EXIF in the layout each app uses. ComfyUI: IFD0 <code>Model</code> = <code>prompt:{…}</code>, <code>Make</code> = <code>workflow:{…}</code>, and any other keys in the tags below those. A1111 / Forge: <code>UserComment</code> (UNICODE) = the <code>parameters</code> text. JPEG can hold at most 64 KB of EXIF.</li>
+      <li><b>WebP, AVIF, JPEG XL and JPEG metadata</b>: written as EXIF in the layout each app uses (JPEG XL in an <code>Exif</code> box of the JXL container). ComfyUI: IFD0 <code>Model</code> = <code>prompt:{…}</code>, <code>Make</code> = <code>workflow:{…}</code>, and any other keys in the tags below those. A1111 / Forge: <code>UserComment</code> (UNICODE) = the <code>parameters</code> text. JPEG can hold at most 64 KB of EXIF.</li>
       <li><b>PNG metadata</b>: one text chunk per key (<code>prompt</code>, <code>workflow</code>, <code>parameters</code>), as ComfyUI and A1111 save PNGs.</li>
-      <li><b>Metadata sources</b>: PNG text chunks, the EXIF in JPG and AVIF files (as A1111 and ComfyUI write them), and the string attributes of EXR headers.</li>
+      <li><b>Metadata sources</b>: PNG text chunks, the EXIF in JPG, AVIF and JPEG XL files (as A1111 and ComfyUI write them), and the string attributes of EXR headers.</li>
       <li><b>EXR</b>: decoded with three.js's EXRLoader (also loaded from jsDelivr), then converted from linear light to 8-bit sRGB. Values brighter than white are clipped, and "lossless" means lossless from that 8-bit result.</li>
       <li>PNG colour profiles (iCCP/gAMA) are not carried over. ComfyUI and A1111 output plain sRGB, so this doesn't matter for their images.</li>
     </ul>
@@ -374,9 +375,20 @@ async function decodeExr(buf) {
   return { data: out, width: w, height: h };
 }
 
+// JPEG XL: libjxl's decoder from jSquash (most browsers can't decode JXL themselves).
+let jxlDecoder = null;
+async function decodeJxl(buf) {
+  jxlDecoder ||= import(SQ + "jxl@1.3.0/codec/dec/jxl_dec.js").then(m => m.default({ noInitialRun: true }))
+    .catch(e => { jxlDecoder = null; throw new Error("Could not load the JPEG XL decoder (needs internet the first time): " + (e.message || e)); });
+  const img = (await jxlDecoder).decode(buf);
+  if (!img) throw new Error("Could not decode this JPEG XL file");
+  return img;
+}
+
 async function decode(buf, kind) {
   if (kind === "webp") return decodeWebp(buf);
   if (kind === "exr") return decodeExr(buf);
+  if (kind === "jxl") return decodeJxl(buf);
   return (kind === "png" && await decodePng(buf)) || decodeWithBrowser(buf);
 }
 
@@ -434,6 +446,17 @@ async function encodeJpeg(img, opts) {
   return module.encode(img.data, img.width, img.height, { ...defaultOptions, ...rest });
 }
 
+// Single-threaded build, like AVIF: the multi-threaded one needs cross-origin isolation.
+async function encodeJxl(img, opts) {
+  const { module, defaultOptions } = await loadOnce("JPEG XL", async () => {
+    const [{ defaultOptions }, codec] = await Promise.all([import(SQ + "jxl@1.3.0/meta.js"), import(SQ + "jxl@1.3.0/codec/enc/jxl_enc.js")]);
+    return { module: await codec.default({ noInitialRun: true }), defaultOptions };
+  });
+  const o = { ...defaultOptions, ...opts };
+  if (o.lossless) { o.quality = 100; o.lossyModular = false; o.lossyPalette = false; } // what lossless requires
+  return module.encode(img.data, img.width, img.height, o);
+}
+
 async function encodePng(img, opts) {
   const oxipng = await loadOnce("PNG", async () => {
     const m = await import(SQ + "oxipng@2.3.0/codec/pkg/squoosh_oxipng.js");
@@ -443,7 +466,7 @@ async function encodePng(img, opts) {
   return oxipng.optimise_raw(img.data, img.width, img.height, opts.level ?? 2, false, false);
 }
 
-const ENCODERS = { webp: encodeWebp, avif: encodeAvif, jpeg: encodeJpeg, png: encodePng };
+const ENCODERS = { webp: encodeWebp, avif: encodeAvif, jxl: encodeJxl, jpeg: encodeJpeg, png: encodePng };
 const MAX_SIZE = { webp: 16383, jpeg: 65535 };
 
 async function handle({ buf, opts, kind, thumb, format = "webp" }) {
@@ -798,6 +821,39 @@ async function readAvifMeta(file) {
   return exifToMeta(data.subarray(4 + u32(data, 0))); // 4-byte offset to the TIFF header
 }
 
+// JPEG XL: a bare codestream (FF 0A) has no room for metadata; the container (ISOBMFF boxes)
+// keeps EXIF in an "Exif" box, or in a Brotli-compressed "brob" box wrapping one.
+const JXL_SIGNATURE = [0, 0, 0, 12, 0x4A, 0x58, 0x4C, 0x20, 0x0D, 0x0A, 0x87, 0x0A];
+async function readJxlMeta(file) {
+  const read = sliceReader(file);
+  const head = await read(0, 12);
+  if (head[0] === 0xFF && head[1] === 0x0A) return {};
+  if (!JXL_SIGNATURE.every((b, i) => head[i] === b)) throw new Error("Not a JPEG XL file");
+  const u32 = (b, o) => (b[o] << 24 | b[o + 1] << 16 | b[o + 2] << 8 | b[o + 3]) >>> 0;
+  let p = 12;
+  while (p + 8 <= file.size) {
+    const h = await read(p, p + 16);
+    let size = u32(h, 0), hdr = 8;
+    if (size === 1) { size = u32(h, 8) * 2 ** 32 + u32(h, 12); hdr = 16; } else if (size === 0) size = file.size - p;
+    if (size < hdr) break;
+    const type = latin1.decode(h.subarray(4, 8));
+    if (type === "Exif") {
+      const data = await read(p + hdr, p + size);
+      return exifToMeta(data.subarray(4 + u32(data, 0))); // 4-byte offset to the TIFF header
+    }
+    if (type === "brob" && latin1.decode(await read(p + hdr, p + hdr + 4)) === "Exif") {
+      let data;
+      try {
+        const ds = new DecompressionStream("brotli");
+        data = new Uint8Array(await new Response(file.slice(p + hdr + 4, p + size).stream().pipeThrough(ds)).arrayBuffer());
+      } catch { throw new Error("EXIF is Brotli-compressed, which this browser can't read"); }
+      return exifToMeta(data.subarray(4 + u32(data, 0)));
+    }
+    p += size;
+  }
+  return {};
+}
+
 // OpenEXR: generation data is stored as "string" header attributes (prompt, workflow, …).
 const EXR_STANDARD_ATTRS = new Set(["writer", "owner", "comments", "capDate", "name", "type", "view", "multiView", "renderingTransform", "lookModTransform", "software"]);
 async function readExrMeta(file) {
@@ -836,7 +892,7 @@ function concatBytes(parts) {
   return out;
 }
 
-/* ---------- PNG / JPEG / AVIF metadata writers ---------- */
+/* ---------- PNG / JPEG / AVIF / JPEG XL metadata writers ---------- */
 
 const GENERATION_KEYS = ["prompt", "workflow", "parameters"];
 
@@ -999,6 +1055,36 @@ function avifWithExif(bytes, tiff) {
   const oldSize = meta.end - meta.at;
   const newMeta = build(build(0).length - oldSize); // sizes don't depend on the offsets, so two passes suffice
   return concatBytes([bytes.subarray(0, meta.at), newMeta, bytes.subarray(meta.end), box("mdat", payload)]);
+}
+
+// JPEG XL: adds an "Exif" box after ftyp (and the jxll level box, which must follow ftyp).
+// A bare codestream is first wrapped in a container (signature, ftyp, jxlc).
+// Existing Exif boxes, compressed or not, are replaced.
+function jxlWithExif(bytes, tiff) {
+  const u32 = (b, o) => (b[o] << 24 | b[o + 1] << 16 | b[o + 2] << 8 | b[o + 3]) >>> 0;
+  const be32 = n => new Uint8Array([n >>> 24, n >> 16 & 255, n >> 8 & 255, n & 255]);
+  const box = (t, ...parts) => { const body = concatBytes(parts); return concatBytes([be32(8 + body.length), enc.encode(t), body]); };
+  const exifBox = box("Exif", be32(0), tiff); // 4-byte offset to the TIFF header, then the TIFF
+  const ftyp = box("ftyp", enc.encode("jxl "), be32(0), enc.encode("jxl "));
+  if (bytes[0] === 0xFF && bytes[1] === 0x0A) {
+    if (bytes.length > 0xFFFFFFF0) throw new Error("JPEG XL codestream too large to wrap");
+    return concatBytes([new Uint8Array(JXL_SIGNATURE), ftyp, exifBox, box("jxlc", bytes)]);
+  }
+  if (!JXL_SIGNATURE.every((b, i) => bytes[i] === b)) throw new Error("Not a JPEG XL file");
+  const parts = [bytes.subarray(0, 12)];
+  let p = 12, inserted = false;
+  while (p + 8 <= bytes.length) {
+    let size = u32(bytes, p), hdr = 8;
+    if (size === 1) { size = u32(bytes, p + 8) * 2 ** 32 + u32(bytes, p + 12); hdr = 16; } else if (size === 0) size = bytes.length - p;
+    if (size < hdr) throw new Error("Malformed JPEG XL container");
+    const type = latin1.decode(bytes.subarray(p + 4, p + 8));
+    const isExif = type === "Exif" || (type === "brob" && latin1.decode(bytes.subarray(p + hdr, p + hdr + 4)) === "Exif");
+    if (!inserted && type !== "ftyp" && type !== "jxll") { parts.push(exifBox); inserted = true; }
+    if (!isExif) parts.push(bytes.subarray(p, p + size));
+    p += size;
+  }
+  if (!inserted) parts.push(exifBox);
+  return concatBytes(parts);
 }
 
 // Adds or replaces metadata chunks. extra: {ICCP?, EXIF?, "XMP "?} -> Uint8Array
@@ -1227,30 +1313,32 @@ function pumpThumbs() {
   }
 }
 async function makeThumb(file) {
+  const kind = fileKind(file.name);
+  let bmp = null;
+  // Browsers can't decode EXR, and most can't decode JPEG XL: then a worker decodes it and sends back a small RGBA preview.
+  if (kind !== "exr") bmp = await createImageBitmap(file, { resizeWidth: 104, resizeQuality: "medium" }).catch(e => { if (kind !== "jxl") throw e; return null; });
   let c;
-  if (fileKind(file.name) === "exr") {
-    // Browsers can't decode EXR, so a worker decodes it and sends back a small RGBA preview.
-    const { rgba, width, height } = await exrThumb(file);
-    c = new OffscreenCanvas(width, height);
-    c.getContext("2d").putImageData(new ImageData(rgba, width, height), 0, 0);
-  } else {
-    const bmp = await createImageBitmap(file, { resizeWidth: 104, resizeQuality: "medium" });
+  if (bmp) {
     c = new OffscreenCanvas(bmp.width, bmp.height);
     c.getContext("2d").drawImage(bmp, 0, 0);
     bmp.close();
+  } else {
+    const { rgba, width, height } = await workerThumb(file, kind);
+    c = new OffscreenCanvas(width, height);
+    c.getContext("2d").putImageData(new ImageData(rgba, width, height), 0, 0);
   }
   return URL.createObjectURL(await c.convertToBlob({ type: "image/webp", quality: 0.8 }));
 }
 
-// EXR previews go through one worker, one at a time (the files are large).
-let thumbWorker = null, exrThumbChain = Promise.resolve();
-function exrThumb(file) {
-  const job = exrThumbChain.then(async () => {
+// Worker previews go through one worker, one at a time (EXR files are large).
+let thumbWorker = null, workerThumbChain = Promise.resolve();
+function workerThumb(file, kind) {
+  const job = workerThumbChain.then(async () => {
     thumbWorker ||= makeWorker();
     const buf = await file.arrayBuffer();
-    return thumbWorker.run({ buf, kind: "exr", thumb: 104 }, [buf]);
+    return thumbWorker.run({ buf, kind, thumb: 104 }, [buf]);
   });
-  exrThumbChain = job.catch(() => {});
+  workerThumbChain = job.catch(() => {});
   return job;
 }
 function dropThumb(file) {
@@ -1319,18 +1407,19 @@ const metaPending = new Map(); // File -> Promise
 
 const webpInfo = new Map();   // File -> {keep, animated} for WebP inputs
 const isWebpFile = file => /\.webp$/i.test(file.name);
-// png | webp | jpg | avif | exr, or null for anything else.
+// png | webp | jpg | avif | jxl | exr, or null for anything else.
 function fileKind(name) {
   const ext = (name.match(/\.([^.]+)$/) || [])[1]?.toLowerCase();
-  return ext === "jpeg" ? "jpg" : ["png", "webp", "jpg", "avif", "exr"].includes(ext) ? ext : null;
+  return ext === "jpeg" ? "jpg" : ["png", "webp", "jpg", "avif", "jxl", "exr"].includes(ext) ? ext : null;
 }
-const INPUT_ACCEPT = ".png,.webp,.jpg,.jpeg,.avif,.exr,image/png,image/webp,image/jpeg,image/avif";
+const INPUT_ACCEPT = ".png,.webp,.jpg,.jpeg,.avif,.jxl,.exr,image/png,image/webp,image/jpeg,image/avif,image/jxl";
 
 async function readMeta(file) {
   switch (fileKind(file.name)) {
     case "webp": { const info = await readWebpInfo(file); webpInfo.set(file, info); return info.meta; }
     case "jpg": return readJpegMeta(file);
     case "avif": return readAvifMeta(file);
+    case "jxl": return readJxlMeta(file);
     case "exr": return readExrMeta(file);
     default: return readPngText(file);
   }
@@ -1441,6 +1530,7 @@ function addConvertFiles(list) {
 const FORMATS = {
   webp: { label: "WebP", ext: "webp", kind: "webp", modes: ["lossless", "lossy"], effort: true, sharp: true, quality: 90 },
   avif: { label: "AVIF", ext: "avif", kind: "avif", modes: ["lossless", "lossy"], effort: true, sharp: true, quality: 65 },
+  jxl: { label: "JPEG XL", ext: "jxl", kind: "jxl", modes: ["lossless", "lossy"], effort: true, quality: 90 },
   jpeg: { label: "JPEG", ext: "jpg", kind: "jpg", modes: ["lossy"], effort: false, background: true, quality: 90 },
   png: { label: "PNG", ext: "png", kind: "png", modes: ["lossless"], effort: true },
 };
@@ -1521,7 +1611,7 @@ const renderConvertSoon = throttled(renderConvert);
 // Effort 0–9 follows cwebp's -z presets for lossless: [method, quality].
 const LOSSLESS_PRESETS = [[0, 0], [1, 20], [2, 25], [3, 30], [3, 50], [4, 50], [4, 75], [4, 90], [5, 90], [6, 100]];
 
-// JPEG is always lossy and PNG always lossless; WebP and AVIF follow the Compression switch.
+// JPEG is always lossy and PNG always lossless; WebP, AVIF and JPEG XL follow the Compression switch.
 function lossless() {
   const modes = FORMATS[outFormat()].modes;
   if (modes.length === 1) return modes[0] === "lossless";
@@ -1543,6 +1633,10 @@ function encodeOptions() {
     const speed = Math.min(10, Math.max(2, 12 - level)); // effort 6 = libavif's default speed 6
     return lossless() ? { lossless: true, speed } : { quality, speed, enableSharpYUV: sharp };
   }
+  if (format === "jxl") {
+    const effort = Math.min(9, level + 1); // libjxl effort 1–9 (10 needs expert options); effort 6 = its default 7
+    return lossless() ? { lossless: true, effort } : { quality, effort };
+  }
   if (format === "jpeg") return { quality, background: hexToRgb(el("bgColor").value) };
   return { level: Math.round(level * 6 / 9) }; // png: oxipng level 0–6
 }
@@ -1556,12 +1650,16 @@ const HINTS = {
     lossless: "Pixel-identical to the source, but usually bigger than lossless WebP. AVIF is at its best in lossy mode.",
     lossy: "Smallest files for how they look. AVIF's quality scale runs lower than WebP/JPEG: 60–75 is already close to the original. Encoding is slower; lower effort is faster.",
   },
+  jxl: {
+    lossless: "Pixel-identical to the source, and usually smaller than lossless WebP. Higher effort is slower; 8–9 is very slow on big images. Not every browser or app can open JPEG XL yet.",
+    lossy: "Small files that hold fine detail well. 90 is visually lossless for most images. Not every browser or app can open JPEG XL yet.",
+  },
   jpeg: { lossy: "Works everywhere. No transparency, so transparent areas get the background colour. 85–92 is typical. JPEG holds at most 64 KB of metadata, so very large ComfyUI workflows won't fit." },
   png: { lossless: "Lossless and supported everywhere, but the biggest files. Effort sets how hard oxipng optimises; high levels are much slower." },
 };
 
 // Remembered per output format, since the useful range differs (e.g. AVIF 65 ≈ WebP 90).
-const qualityByFormat = { webp: 90, avif: 65, jpeg: 90 };
+const qualityByFormat = { webp: 90, avif: 65, jxl: 90, jpeg: 90 };
 let shownFormat = null;
 
 // Output name format, remembered per format + compression ("avif-lossy", "png-lossless", …).
@@ -1728,7 +1826,7 @@ function resultStatus(file, { data, meta, fromCache }) {
   return { cls: data.length < file.size ? "ok" : "warn", text: `${fmtBytes(file.size)} → ${fmtBytes(data.length)} (${pct(file.size, data.length)})` + note };
 }
 
-const MIME = { webp: "image/webp", avif: "image/avif", jpeg: "image/jpeg", png: "image/png" };
+const MIME = { webp: "image/webp", avif: "image/avif", jxl: "image/jxl", jpeg: "image/jpeg", png: "image/png" };
 function saveBlob(data, name, type) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([data], { type }));
@@ -1834,6 +1932,7 @@ function addMetadata(format, bytes, meta, webpSource) {
   if (!exif) return bytes;
   if (format === "webp") return writeWebp(bytes.buffer, exif);
   if (format === "jpeg") return jpegWithExif(bytes, exif);
+  if (format === "jxl") return jxlWithExif(bytes, exif);
   return avifWithExif(bytes, exif);
 }
 
@@ -1867,7 +1966,7 @@ const status = new Map();   // target key -> {cls, text}
 const logEl = el("log");
 
 // Formats metadata can be written into without re-encoding.
-const TARGET_FORMAT = { webp: "webp", png: "png", jpg: "jpeg", avif: "avif" };
+const TARGET_FORMAT = { webp: "webp", png: "png", jpg: "jpeg", avif: "avif", jxl: "jxl" };
 
 function addInto(map, list, accept) {
   for (const item of list) {
@@ -1892,8 +1991,8 @@ function addTargetFiles(list) {
 
 const hasGenMeta = m => m && !(m instanceof Error) && Object.keys(m).length > 0;
 
-// When several originals share a name: ones known to have metadata first, then PNG, AVIF, JPG, WebP, EXR.
-const SOURCE_PRIORITY = { png: 0, avif: 1, jpg: 2, webp: 3, exr: 4 };
+// When several originals share a name: ones known to have metadata first, then PNG, AVIF, JPEG XL, JPG, WebP, EXR.
+const SOURCE_PRIORITY = { png: 0, avif: 1, jxl: 2, jpg: 3, webp: 4, exr: 5 };
 function rank(s) {
   const m = metaCache.get(s.file);
   return (m === undefined ? 1 : hasGenMeta(m) ? 0 : 2) * 10 + (SOURCE_PRIORITY[fileKind(s.file.name)] ?? 9);
