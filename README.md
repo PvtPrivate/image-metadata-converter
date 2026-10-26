@@ -17,6 +17,7 @@ Open `index.html` in Chrome or Edge. Nothing to install, and images never leave 
   | PNG | lossless | oxipng | effort (oxipng level 0–6) |
 
   - Quality and effort are remembered per format.
+  - Optional resize, by percentage or to a pixel size (width, height or both). Keeping the aspect ratio fits the image inside the box, and smaller images can be left at their size. Uses Lanczos-3 resampling with premultiplied alpha.
   - Output name format with `{name}` and `{q}` tokens, a "Saves as" preview, and warnings when names clash or would overwrite the source.
 - **Restore metadata**: for images converted or edited with another tool that dropped the metadata.
   - Two lists: **Originals** (any input format) and **Files to fix** (WebP, PNG, JPEG, AVIF or JPEG XL).

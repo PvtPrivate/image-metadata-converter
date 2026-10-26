@@ -93,6 +93,7 @@
   .name-row input { font: inherit; width: 100%; max-width: 320px; padding: 5px 8px; border-radius: 7px;
     border: 1px solid var(--border); background: var(--bg); color: var(--text); }
   .name-row input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .name-row input[type="number"] { width: 90px; }
   .name-row input[type="color"] { width: 40px; height: 30px; padding: 2px; flex: none; cursor: pointer; }
   /* Help sits in its own grid row under the field, so the label lines up with the input. */
   .name-help { grid-column: 2; margin-top: -4px; }
@@ -165,6 +166,25 @@
       <label class="k" id="bgKey" for="bgColor">Background</label>
       <div class="name-row" id="bgRow"><input type="color" id="bgColor" value="#ffffff"><code id="bgHex">#ffffff</code><span class="muted">fills transparent areas (JPEG has no transparency)</span></div>
       <p class="hint" id="modeHint"></p>
+      <span class="k">Resize</span>
+      <div class="seg">
+        <label><input type="radio" name="rmode" value="none" checked> Original size</label>
+        <label><input type="radio" name="rmode" value="percent"> Percentage</label>
+        <label><input type="radio" name="rmode" value="pixels"> Pixels</label>
+      </div>
+      <label class="k" id="pctKey" for="resizePct">Scale</label>
+      <div class="name-row" id="pctRow"><input type="number" id="resizePct" min="1" max="1000" step="any" value="50"><span class="muted">%</span></div>
+      <label class="k" id="pxKey" for="resizeW">Size</label>
+      <div class="name-row" id="pxRow">
+        <input type="number" id="resizeW" min="1" max="65535" placeholder="width" aria-label="Width"><span class="muted">×</span>
+        <input type="number" id="resizeH" min="1" max="65535" placeholder="height" aria-label="Height"><span class="muted">px</span>
+      </div>
+      <div class="name-help" id="pxHelp">
+        <label class="opt"><input type="checkbox" id="keepAspect" checked> Keep aspect ratio (fit inside the box)</label><br>
+        <label class="opt"><input type="checkbox" id="noEnlarge" checked> Don't enlarge smaller images</label>
+        <div class="field-hint">Leave width or height empty to scale the other side proportionally.</div>
+      </div>
+      <div class="field-hint warn name-help" id="resizeWarn" hidden></div>
       <label class="k" for="nameTpl">Output name</label>
       <div class="name-row"><input type="text" id="nameTpl" value="{name}" spellcheck="false" autocomplete="off"><span class="muted" id="extLabel">.webp</span></div>
       <div class="name-help">
@@ -231,6 +251,7 @@
     <summary>How it works</summary>
     <ul>
       <li><b>Encoders</b>: libwebp (WebP), libavif (AVIF), libjxl (JPEG XL), MozJPEG (JPEG) and oxipng (PNG), compiled to WebAssembly by the jSquash project and loaded from jsDelivr the first time each one is used, so that step needs an internet connection. Lossless output is pixel-identical to the source image. JPEG XL inputs are decoded with libjxl too, since most browsers can't.</li>
+      <li><b>Resize</b>: Lanczos-3 resampling with premultiplied alpha, done before encoding. With a resize, lossless output matches the resized image, not the source.</li>
       <li><b>WebP → WebP</b>: the source's EXIF (workflow/parameters), XMP and colour profile are copied over unchanged. Animated WebPs aren't supported.</li>
       <li><b>WebP, AVIF, JPEG XL and JPEG metadata</b>: written as EXIF in the layout each app uses (JPEG XL in an <code>Exif</code> box of the JXL container). ComfyUI: IFD0 <code>Model</code> = <code>prompt:{…}</code>, <code>Make</code> = <code>workflow:{…}</code>, and any other keys in the tags below those. A1111 / Forge: <code>UserComment</code> (UNICODE) = the <code>parameters</code> text. JPEG can hold at most 64 KB of EXIF.</li>
       <li><b>PNG metadata</b>: one text chunk per key (<code>prompt</code>, <code>workflow</code>, <code>parameters</code>), as ComfyUI and A1111 save PNGs.</li>
@@ -403,6 +424,67 @@ function shrink(img, maxW) {
   return { rgba: out, width: w, height: h };
 }
 
+// Output size for the Resize option ({mode: "percent", percent} or {mode: "pixels", width, height, keepAspect, noEnlarge}).
+function targetSize(w, h, r) {
+  const fit = s => [Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s))];
+  if (r.mode === "percent") return fit(r.percent / 100);
+  const { width: W, height: H } = r;
+  if (W && H && !r.keepAspect) return r.noEnlarge ? [Math.min(W, w), Math.min(H, h)] : [W, H];
+  const s = Math.min(W ? W / w : Infinity, H ? H / h : Infinity);
+  return fit(r.noEnlarge ? Math.min(s, 1) : s);
+}
+
+function lanczos3(x) {
+  if (x === 0) return 1;
+  if (x <= -3 || x >= 3) return 0;
+  const p = Math.PI * x;
+  return 3 * Math.sin(p) * Math.sin(p / 3) / (p * p);
+}
+
+// Normalised Lanczos-3 taps for each output pixel. When shrinking, the filter is widened
+// by the scale factor so every source pixel contributes (no aliasing).
+function filterTaps(src, dst) {
+  const scale = src / dst, blur = Math.max(1, scale), support = 3 * blur, taps = [];
+  for (let i = 0; i < dst; i++) {
+    const center = (i + 0.5) * scale;
+    const lo = Math.max(0, Math.floor(center - support)), hi = Math.min(src, Math.ceil(center + support));
+    const w = new Float32Array(hi - lo);
+    let sum = 0;
+    for (let j = lo; j < hi; j++) sum += w[j - lo] = lanczos3((j + 0.5 - center) / blur);
+    for (let k = 0; k < w.length; k++) w[k] /= sum;
+    taps.push({ start: lo, w });
+  }
+  return taps;
+}
+
+// Lanczos-3 resize with premultiplied alpha, so transparent pixels don't bleed their colour.
+// One output row at a time: vertical pass into a single source-width row, then horizontal.
+function resample(img, dw, dh) {
+  const { width: sw, data: s } = img, rows = filterTaps(img.height, dh), cols = filterTaps(sw, dw);
+  const out = new Uint8ClampedArray(dw * dh * 4), line = new Float32Array(sw * 4);
+  for (let y = 0; y < dh; y++) {
+    line.fill(0);
+    const { start, w } = rows[y];
+    for (let k = 0; k < w.length; k++) {
+      const wk = w[k];
+      for (let x = 0, i = (start + k) * sw * 4; x < line.length; x += 4, i += 4) {
+        const a = s[i + 3] * wk;
+        line[x] += s[i] * a; line[x + 1] += s[i + 1] * a; line[x + 2] += s[i + 2] * a; line[x + 3] += a;
+      }
+    }
+    for (let x = 0, o = y * dw * 4; x < dw; x++, o += 4) {
+      const { start, w } = cols[x];
+      let r = 0, g = 0, b = 0, a = 0;
+      for (let k = 0, i = start * 4; k < w.length; k++, i += 4) {
+        const wk = w[k];
+        r += line[i] * wk; g += line[i + 1] * wk; b += line[i + 2] * wk; a += line[i + 3] * wk;
+      }
+      if (a > 0) { out[o] = r / a; out[o + 1] = g / a; out[o + 2] = b / a; out[o + 3] = a; }
+    }
+  }
+  return { data: out, width: dw, height: dh };
+}
+
 // Other encoders, same jSquash family. Each is loaded the first time it's needed.
 // (The codec files are imported directly: the packages' wrappers use bare imports.)
 const SQ = "https://cdn.jsdelivr.net/npm/@jsquash/";
@@ -469,9 +551,13 @@ async function encodePng(img, opts) {
 const ENCODERS = { webp: encodeWebp, avif: encodeAvif, jxl: encodeJxl, jpeg: encodeJpeg, png: encodePng };
 const MAX_SIZE = { webp: 16383, jpeg: 65535 };
 
-async function handle({ buf, opts, kind, thumb, format = "webp" }) {
-  const img = await decode(buf, kind);
+async function handle({ buf, opts, kind, thumb, format = "webp", resize }) {
+  let img = await decode(buf, kind);
   if (thumb) return shrink(img, thumb);
+  if (resize) {
+    const [w, h] = targetSize(img.width, img.height, resize);
+    if (w !== img.width || h !== img.height) img = resample(img, w, h);
+  }
   const max = MAX_SIZE[format];
   if (max && (img.width > max || img.height > max)) throw new Error(`${img.width}×${img.height} is larger than ${format.toUpperCase()} allows (${max} px)`);
   const result = await ENCODERS[format](img, opts);
@@ -1599,8 +1685,8 @@ function renderConvert() {
   el("cardConvert").classList.toggle("empty", !list.length);
   el("countConvert").textContent = list.length ? `${list.length} file${list.length > 1 ? "s" : ""} · ${fmtBytes(total)}` : "";
   el("btnClearConvert").hidden = !list.length;
-  el("btnConvertFolder").disabled = busy || !list.length;
-  el("btnConvertZip").disabled = busy || !list.length;
+  el("btnConvertFolder").disabled = busy || !list.length || resizeOptions() === undefined;
+  el("btnConvertZip").disabled = busy || !list.length || resizeOptions() === undefined;
   updateNameUI();
   syncConvertList(list.map(({ key, file, path }) => {
     const st = convertStatus.get(path);
@@ -1621,6 +1707,22 @@ function lossless() {
   const modes = FORMATS[outFormat()].modes;
   if (modes.length === 1) return modes[0] === "lossless";
   return document.querySelector('input[name="cmode"]:checked').value === "lossless";
+}
+
+// Resize settings for the worker: null for original size, undefined while the fields are incomplete.
+function resizeOptions() {
+  const mode = document.querySelector('input[name="rmode"]:checked').value;
+  const num = id => { const v = +el(id).value; return el(id).value.trim() && Number.isFinite(v) && v > 0 ? v : 0; };
+  if (mode === "percent") {
+    const percent = num("resizePct");
+    return percent ? { mode, percent } : undefined;
+  }
+  if (mode === "pixels") {
+    const width = Math.round(num("resizeW")), height = Math.round(num("resizeH"));
+    if (!width && !height) return undefined;
+    return { mode, width, height, keepAspect: el("keepAspect").checked, noEnlarge: el("noEnlarge").checked };
+  }
+  return null;
 }
 
 function hexToRgb(hex) { const n = parseInt(hex.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
@@ -1699,11 +1801,18 @@ function updateOptionsUI() {
   el("qualityOut").textContent = el("quality").value;
   el("effortOut").textContent = el("effort").value;
   el("bgHex").textContent = el("bgColor").value;
+  const rmode = document.querySelector('input[name="rmode"]:checked').value, resize = resizeOptions();
   el("modeHint").textContent = HINTS[format][ll ? "lossless" : "lossy"];
-  updateNameUI();
+  el("pctKey").hidden = el("pctRow").hidden = rmode !== "percent";
+  el("pxKey").hidden = el("pxRow").hidden = el("pxHelp").hidden = rmode !== "pixels";
+  el("resizeWarn").hidden = resize !== undefined;
+  el("resizeWarn").textContent = rmode === "percent" ? "Enter a scale above 0%." : "Enter a width, a height or both.";
+  renderConvert(); // also updates the name preview, and disables Convert while the resize fields are incomplete
   store.set("settings", {
     format, mode: document.querySelector('input[name="cmode"]:checked').value, qualityByFormat,
     effortByFormat, sharp: el("sharpYuv").checked, background: el("bgColor").value, nameByCombo, defaultNameTpl,
+    resize: { mode: rmode, percent: el("resizePct").value, width: el("resizeW").value, height: el("resizeH").value,
+      keepAspect: el("keepAspect").checked, noEnlarge: el("noEnlarge").checked },
   });
 }
 (() => {
@@ -1726,8 +1835,18 @@ function updateOptionsUI() {
     if (s.nameByCombo) Object.assign(nameByCombo, s.nameByCombo);
     if (typeof s.defaultNameTpl === "string") defaultNameTpl = s.defaultNameTpl;
     else if (typeof s.nameTpl === "string") defaultNameTpl = s.nameTpl; // single name format saved by earlier versions
+    if (s.resize) {
+      const r = s.resize, rRadio = document.querySelector(`input[name="rmode"][value="${r.mode}"]`);
+      if (rRadio) rRadio.checked = true;
+      el("resizePct").value = r.percent ?? 50;
+      el("resizeW").value = r.width ?? "";
+      el("resizeH").value = r.height ?? "";
+      el("keepAspect").checked = r.keepAspect !== false;
+      el("noEnlarge").checked = r.noEnlarge !== false;
+    }
   }
-  document.querySelectorAll('input[name="ofmt"], input[name="cmode"], #quality, #effort, #sharpYuv, #bgColor, #nameTpl').forEach(i => i.addEventListener("input", updateOptionsUI));
+  document.querySelectorAll('input[name="ofmt"], input[name="cmode"], #quality, #effort, #sharpYuv, #bgColor, #nameTpl, ' +
+    'input[name="rmode"], #resizePct, #resizeW, #resizeH, #keepAspect, #noEnlarge').forEach(i => i.addEventListener("input", updateOptionsUI));
   // Token buttons insert at the cursor.
   document.querySelectorAll(".token").forEach(b => b.addEventListener("click", () => {
     const input = el("nameTpl"), t = b.dataset.token;
@@ -1793,8 +1912,8 @@ const RESULT_CACHE_LIMIT = 1024 * 1024 * 1024; // 1 GB
 const resultCache = new Map(); // key -> Uint8Array (insertion order = least recently used first)
 let resultCacheBytes = 0;
 
-function resultKey(file, path, format, opts) {
-  return JSON.stringify([path, file.size, file.lastModified, format, opts]);
+function resultKey(file, path, format, opts, resize) {
+  return JSON.stringify([path, file.size, file.lastModified, format, opts, resize]);
 }
 function cacheGet(key) {
   const data = resultCache.get(key);
@@ -1820,10 +1939,10 @@ function forgetResults(path) {
 
 // Converts one file (or takes it from the result cache): {data, meta, fromCache}.
 // onEncoding is called only when it actually has to encode.
-async function produceOutput(worker, file, path, format, opts, onEncoding) {
+async function produceOutput(worker, file, path, format, opts, resize, onEncoding) {
   const meta = await loadMeta(file);
   if (meta instanceof Error) throw meta;
-  const key = resultKey(file, path, format, opts);
+  const key = resultKey(file, path, format, opts, resize);
   const cached = cacheGet(key);
   if (cached) return { data: cached, meta, fromCache: true };
   onEncoding?.();
@@ -1831,7 +1950,7 @@ async function produceOutput(worker, file, path, format, opts, onEncoding) {
   if (info?.animated) throw new Error("Animated WebP isn't supported");
   const buf = await file.arrayBuffer();
   const kind = fileKind(file.name);
-  const { bytes } = await worker.run({ buf, opts, format, kind: kind === "jpg" || kind === "avif" ? "image" : kind }, [buf]);
+  const { bytes } = await worker.run({ buf, opts, format, resize, kind: kind === "jpg" || kind === "avif" ? "image" : kind }, [buf]);
   const data = addMetadata(format, bytes, meta, info);
   cachePut(key, data); // before saving, so a failed save can be retried without encoding
   return { data, meta, fromCache: false };
@@ -1864,12 +1983,13 @@ async function downloadConverted(key, btn) {
   const item = convertPngs.get(key);
   if (!item) return;
   const { file, path } = item;
-  const format = outFormat(), opts = encodeOptions(), name = baseName(outputPath(path));
+  const format = outFormat(), opts = encodeOptions(), resize = resizeOptions(), name = baseName(outputPath(path));
+  if (resize === undefined) { convertStatus.set(path, { cls: "warn", text: el("resizeWarn").textContent }); renderConvert(); return; }
   btn.disabled = true;
   try {
     const r = await runSingle(() => {
       singleWorker ||= makeWorker();
-      return produceOutput(singleWorker, file, path, format, opts, () => { convertStatus.set(path, { cls: "", text: "Encoding…" }); renderConvertSoon(); });
+      return produceOutput(singleWorker, file, path, format, opts, resize, () => { convertStatus.set(path, { cls: "", text: "Encoding…" }); renderConvertSoon(); });
     });
     saveBlob(r.data, name, MIME[format]);
     convertStatus.set(path, resultStatus(file, r));
@@ -1886,7 +2006,7 @@ async function convertAll(sink, exists) {
   const list = [...convertPngs.values()].sort(byPath);
   const clashes = outputClashes(list);
   const format = outFormat();
-  const opts = encodeOptions();
+  const opts = encodeOptions(), resize = resizeOptions();
   let next = 0, done = 0, skipped = 0, failed = 0, reused = 0, inBytes = 0, outBytes = 0;
   const started = performance.now();
   stopRequested = false;
@@ -1914,7 +2034,7 @@ async function convertAll(sink, exists) {
           convertStatus.set(path, { cls: "muted", text: "Skipped: already exists" }); skipped++;
           continue;
         }
-        const r = await produceOutput(worker, file, path, format, opts, () => { convertStatus.set(path, { cls: "", text: "Encoding…" }); renderConvertSoon(); });
+        const r = await produceOutput(worker, file, path, format, opts, resize, () => { convertStatus.set(path, { cls: "", text: "Encoding…" }); renderConvertSoon(); });
         await sink(out, r.data);
         done++; if (r.fromCache) reused++;
         inBytes += file.size; outBytes += r.data.length;
