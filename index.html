@@ -8,13 +8,18 @@
   :root {
     --bg: #f6f7f9; --panel: #ffffff; --text: #1d2025; --muted: #646b76;
     --border: #dde1e6; --accent: #3b6fd8; --accent-text: #ffffff;
-    --ok: #1f8a4c; --warn: #b7791f; --err: #c53030; --chip: #eef1f5;
+    --ok: #1f8a4c; --warn: #b7791f; --err: #c53030; --chip: #eef1f5; --grid: #eceef1;
+    --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+    --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6; --series-8: #e34948;
+    --st-good: #0ca30c; --st-warning: #fab219; --st-serious: #ec835a; --st-critical: #d03b3b;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #15171b; --panel: #1e2126; --text: #e6e8eb; --muted: #9aa1ab;
       --border: #30353d; --accent: #6b97f0; --accent-text: #0e1116;
-      --ok: #4cc283; --warn: #e0a84a; --err: #f07070; --chip: #2a2e35;
+      --ok: #4cc283; --warn: #e0a84a; --err: #f07070; --chip: #2a2e35; --grid: #272a30;
+      --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+      --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
     }
   }
   * { box-sizing: border-box; }
@@ -114,6 +119,79 @@
   details summary { cursor: pointer; }
   code { background: var(--chip); padding: 0 4px; border-radius: 4px; }
   .log { color: var(--muted); min-height: 1.5em; }
+  /* Benchmark tab */
+  #tab-bench .pair-grid { align-items: start; }
+  .b-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-top: 12px; }
+  .b-card h2 { font-size: 15px; margin: 0; }
+  .b-head { display: flex; gap: 8px 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 10px; }
+  .b-card select { font: inherit; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 7px; padding: 4px 8px; }
+  .b-card label { display: inline-flex; gap: 6px; align-items: center; }
+  #benchTargetCustom { font: inherit; width: 84px; padding: 4px 6px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  .b-orig { padding: 12px 14px; color: var(--muted); font-size: 13px; }
+  .b-orig strong { color: var(--text); }
+  .files.empty .b-orig { display: none; }
+  .b-gen { padding: 12px 14px; display: grid; gap: 10px; }
+  .b-checks { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  .b-empty { color: var(--muted); padding: 24px; text-align: center; }
+  .b-hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .b-table-wrap { overflow-x: auto; }
+  .b-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .b-table { font-size: 13px; }
+  .b-table th, .b-table td { padding: 6px 5px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; }
+  .b-table th { color: var(--muted); font-weight: 600; font-size: 12px; line-height: 1.25; vertical-align: bottom; cursor: pointer; user-select: none; }
+  .b-table th[data-dir="1"]::after { content: " ▲"; }
+  .b-table th[data-dir="-1"]::after { content: " ▼"; }
+  .b-table th:nth-child(-n+3), .b-table td:nth-child(-n+3) { text-align: left; }
+  .b-table tbody tr { cursor: pointer; }
+  .b-table tbody tr:hover { background: var(--bg); }
+  .b-table tbody tr.sel { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .b-table tbody tr.b-below > td:not(:last-child) { opacity: .45; }
+  .b-table td.b-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+  .b-fname { display: inline-block; max-width: 92px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+  .b-table td.b-err { color: var(--err); text-align: left; }
+  .b-noalpha .b-alpha { display: none; }
+  .b-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .b-act { font-size: 13px; color: var(--muted); background: none; border: 0; padding: 0 4px; }
+  .b-act:hover:not(:disabled) { color: var(--accent); }
+  .b-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .b-charts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 760px) { .b-charts { grid-template-columns: minmax(0, 1fr); } }
+  .b-chart svg { display: block; width: 100%; overflow: visible; }
+  .b-chart-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .b-tip { position: fixed; pointer-events: none; z-index: 10; display: none; background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.15); font-variant-numeric: tabular-nums; }
+  .b-k { color: var(--muted); }
+  .b-viewer { overflow: auto; max-height: 75vh; border-radius: 8px; }
+  .b-viewer.bg-checker { background: repeating-conic-gradient(var(--grid) 0 25%, var(--panel) 0 50%) 0 0 / 16px 16px; }
+  .b-viewer.bg-black { background: #000; }
+  .b-viewer.bg-white { background: #fff; }
+  #benchView { display: block; touch-action: none; cursor: ew-resize; }
+  #benchView.fit { max-width: 100%; height: auto; }
+  #benchView.pix { image-rendering: pixelated; }
+  .b-caption { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin: 6px 2px 0; }
+  .b-badge { display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
+  .b-gi { font-weight: 700; width: 1em; text-align: center; }
+  .b-better { font-weight: 400; color: var(--muted); }
+  .b-star { color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 4px; font-size: 10px; font-weight: 700; margin-left: 6px; }
+  .b-headline { font-size: 16px; margin: 4px 0 14px; overflow-wrap: anywhere; }
+  .b-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+  @media (max-width: 760px) { .b-tiles { grid-template-columns: minmax(0, 1fr); } }
+  .b-tile { min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 12px; cursor: pointer; background: var(--bg); }
+  .b-tile:hover, .b-tile.main { border-color: var(--accent); }
+  .b-tile.sel { background: color-mix(in srgb, var(--accent) 14%, var(--bg)); box-shadow: inset 0 0 0 1px var(--accent); }
+  .b-tile .lbl { font-size: 12px; color: var(--muted); }
+  .b-tile .val { font-size: 15px; font-weight: 600; margin: 2px 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .b-tile .meta { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .b-verdicts { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
+  .b-verdicts li { margin: 3px 0; }
+  details.b-card { color: var(--text); }
+  details.b-card > summary { font-weight: 600; font-size: 15px; }
+  .b-glossary { display: grid; grid-template-columns: 170px 1fr; gap: 10px 16px; margin: 14px 0 0; }
+  .b-glossary dt { font-weight: 600; }
+  .b-glossary dd { margin: 0; color: var(--muted); }
+  .b-glossary table td { text-align: left; padding: 3px 14px 3px 0; }
+  @media (max-width: 700px) { .b-glossary { grid-template-columns: 1fr; } }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -125,6 +203,7 @@
   <nav class="tabs">
     <button class="tab active" data-tab="convert">Convert</button>
     <button class="tab" data-tab="transfer">Restore metadata</button>
+    <button class="tab" data-tab="bench">Benchmark</button>
   </nav>
 
   <!-- ============ Convert ============ -->
@@ -247,6 +326,174 @@
     <div class="log" id="log"></div>
   </section>
 
+  <!-- ============ Benchmark ============ -->
+  <section id="tab-bench" hidden>
+    <p class="muted" style="margin-top:0">Measures how close compressed versions are to the original (SSIM, PSNR, worst pixel error), how big they are and how long they take to encode. Generate them with the encoders the Convert tab uses, or add files made elsewhere. Transparency is compared too.</p>
+    <div class="pair-grid">
+      <div class="files empty" id="cardBenchOrig">
+        <div class="files-head">
+          <div><h2>Original</h2></div>
+          <div class="btns"><button class="act" data-pick="benchOrig">Choose file</button></div>
+        </div>
+        <div class="b-orig" id="benchOrigInfo"></div>
+        <div class="empty-drop"><strong>Drop the original image here</strong>everything is compared with it<br>a lossless source (PNG) is best</div>
+        <div class="drop-overlay">Drop the original</div>
+      </div>
+      <div class="files" id="cardBenchComp">
+        <div class="files-head">
+          <div><h2>Compressed versions</h2></div>
+          <div class="btns">
+            <button class="act" data-pick="benchComp" data-dir="1">Add folder</button>
+            <button class="act" data-pick="benchComp">Add files</button>
+          </div>
+        </div>
+        <div class="b-gen">
+          <div class="b-checks" id="benchFormats">
+            <label class="opt"><input type="checkbox" value="webp" checked> WebP</label>
+            <label class="opt"><input type="checkbox" value="avif" checked> AVIF</label>
+            <label class="opt"><input type="checkbox" value="jxl" checked> JPEG XL</label>
+            <label class="opt"><input type="checkbox" value="jpeg" checked> JPEG</label>
+            <label class="opt"><input type="checkbox" value="png"> PNG</label>
+          </div>
+          <div class="name-row"><label class="opt" for="benchQualities">Qualities</label><input type="text" id="benchQualities" value="10, 25, 40, 50, 60, 70, 80, 90, 95" spellcheck="false" autocomplete="off"></div>
+          <label class="opt"><input type="checkbox" id="benchLossless"> Also a lossless version of WebP, AVIF and JPEG XL</label>
+          <div class="field-hint" id="benchNote"></div>
+          <div class="btns">
+            <button class="primary act" id="btnBenchRun" disabled>Generate &amp; measure</button>
+            <button id="btnBenchStop" hidden>Stop</button>
+          </div>
+          <div class="field-hint">Or drop files made with other tools here. They must be the same size as the original.</div>
+        </div>
+        <div class="drop-overlay">Drop compressed files</div>
+      </div>
+    </div>
+    <div class="log" id="benchLog"></div>
+
+    <section class="b-card">
+      <div class="b-head">
+        <h2>Summary</h2>
+        <label>Quality I need
+          <select id="benchTarget">
+            <option value="0.996">Pristine: hard to tell apart even zoomed in</option>
+            <option value="0.99">Excellent: looks identical</option>
+            <option value="0.97" selected>Good: differences only when zoomed in</option>
+            <option value="0.94">Fair: small artifacts are OK</option>
+            <option value="custom">Custom SSIM…</option>
+          </select>
+          <input type="number" id="benchTargetCustom" min="0.5" max="1" step="0.001" value="0.995" aria-label="Minimum SSIM" hidden>
+        </label>
+      </div>
+      <div id="benchSummary"></div>
+    </section>
+
+    <details class="b-card" id="benchGuide">
+      <summary>How to read the scores</summary>
+      <p class="muted" style="margin:8px 0 0">↑ means higher is better, ↓ means lower is better. Every score compares a compressed file with the original.</p>
+      <dl class="b-glossary">
+        <dt>Quality</dt>
+        <dd>A plain-language grade based on SSIM. Rules of thumb, not guarantees: noisy photos hide artifacts, while flat graphics and text show them sooner.
+          <table id="benchGrades"></table>
+        </dd>
+        <dt>SSIM ↑ <span class="b-better">(0 to 1)</span></dt>
+        <dd>How similar the image <em>looks</em>: edges, textures and contrast. It is the closest of these scores to human judgement. <strong>1.000 = identical</strong>. Above 0.99 is usually indistinguishable, and below 0.90 the damage is obvious.</dd>
+        <dt>PSNR ↑ <span class="b-better">(decibels)</span></dt>
+        <dd>How accurate the pixel values are. <strong>Above 40 dB</strong> is excellent, <strong>35–40</strong> good, <strong>30–35</strong> noticeable on close inspection, and <strong>below 30</strong> visibly degraded. Every +6 dB roughly halves the average pixel error. ∞ means the pixels are exactly identical (lossless).</dd>
+        <dt>Size ↓ / Saved ↑</dt>
+        <dd>The file size, and how much smaller it is than your original file. 90% saved means the file is one tenth of the original's size. Generated files hold only the image: Convert adds the workflow or parameters on top.</dd>
+        <dt>BPP ↓ <span class="b-better">(bits per pixel)</span></dt>
+        <dd>File size divided by the number of pixels, so you can compare images of different resolutions. An uncompressed image is 24 BPP (32 with transparency). Typical web photos are 0.5–2.</dd>
+        <dt>MSE ↓</dt>
+        <dd>The average squared difference per pixel. It is the raw number PSNR is calculated from. <strong>0 = identical</strong>. You can mostly ignore it and read PSNR instead.</dd>
+        <dt>Max err ↓ <span class="b-better">(0 to 255)</span></dt>
+        <dd>The single worst pixel difference. Lossy formats nearly always have some large errors, so this matters mainly for pixel art, UI or text, where any changed pixel counts. 0 means lossless.</dd>
+        <dt>Transparency</dt>
+        <dd>For images with transparency, the colour scores above compare both images laid over black and over white, and keep the worse result. That way a change in transparency counts as much as it shows, and colour hidden in fully transparent areas doesn't count. <strong>Alpha PSNR</strong> and <strong>Alpha max err</strong> score the transparency channel on its own. JPEG has no transparency, so it fills transparent areas with the Convert tab's background colour and scores accordingly.</dd>
+        <dt>Encode time ↓</dt>
+        <dd>How long the encoder took for this image. Several encodes run at once, so compare times within one run rather than across machines.</dd>
+        <dt>Charts</dt>
+        <dd>Each line is a format at different quality settings. <strong>Up and to the left is better</strong>: higher quality for fewer bytes. The line that sits higher is the more efficient format.</dd>
+      </dl>
+    </details>
+
+    <section class="b-card">
+      <div class="b-head">
+        <h2>Results</h2>
+        <div class="btns">
+          <button id="btnBenchCsv" disabled>Export CSV</button>
+          <button id="btnBenchClear" disabled>Clear results</button>
+        </div>
+      </div>
+      <div class="b-table-wrap">
+        <table class="b-table b-noalpha" id="benchTable">
+          <thead><tr>
+            <th data-sort="name">File</th>
+            <th data-sort="format">Format</th>
+            <th data-sort="ssim" title="Plain-language grade based on SSIM">Quality</th>
+            <th data-sort="quality" title="Encoder settings (only for files generated here)">Setting</th>
+            <th data-sort="size" title="File size. Lower is better">Size ↓</th>
+            <th data-sort="saved" title="How much smaller than the original file. Higher is better">Saved ↑</th>
+            <th data-sort="bpp" title="Bits per pixel. Lower is better">BPP ↓</th>
+            <th data-sort="ssim" title="Visual similarity, 0 to 1. 1 = identical. Higher is better">SSIM ↑</th>
+            <th data-sort="psnr" title="Pixel accuracy in decibels. Above 40 is excellent. Higher is better">PSNR ↑</th>
+            <th data-sort="mse" title="Average squared pixel error. 0 = identical. Lower is better">MSE ↓</th>
+            <th data-sort="maxErr" title="Worst single-pixel error, 0 to 255. Lower is better">Max<br>err ↓</th>
+            <th class="b-alpha" data-sort="alphaPsnr" title="Accuracy of the transparency channel alone, in decibels. Higher is better">Alpha<br>PSNR ↑</th>
+            <th class="b-alpha" data-sort="alphaMaxErr" title="Worst single-pixel transparency error, 0 to 255. Lower is better">Alpha<br>max err ↓</th>
+            <th data-sort="ms" title="How long the encoder took. Lower is better">Encode<br>time ↓</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="benchRows"></tbody>
+        </table>
+      </div>
+      <div class="b-hint">↑ higher is better · ↓ lower is better · BEST marks the smallest file that meets your quality target, faded rows miss it · click a column to sort · click a row to inspect it below</div>
+    </section>
+
+    <section class="b-card">
+      <h2 style="margin-bottom:10px">Rate–distortion</h2>
+      <div class="b-legend" id="benchLegend"></div>
+      <div class="b-charts">
+        <div class="b-chart"><div class="b-chart-title">SSIM vs bits per pixel <span class="b-better">· up and left is better</span></div><div id="benchChartSsim"></div></div>
+        <div class="b-chart"><div class="b-chart-title">PSNR (dB) vs bits per pixel <span class="b-better">· up and left is better</span></div><div id="benchChartPsnr"></div></div>
+      </div>
+    </section>
+
+    <section class="b-card">
+      <div class="b-head">
+        <h2>Visual comparison</h2>
+        <div class="btns">
+          <label>View
+            <select id="benchMode">
+              <option value="slider">Split slider</option>
+              <option value="diff">Difference map</option>
+              <option value="compressed">Compressed only</option>
+              <option value="original">Original only</option>
+            </select>
+          </label>
+          <label id="benchAmpWrap">Amplify <input type="range" id="benchAmp" min="1" max="50" value="10"> <span id="benchAmpVal">10×</span></label>
+          <label>Background
+            <select id="benchBg">
+              <option value="checker">Checkerboard</option>
+              <option value="black">Black</option>
+              <option value="white">White</option>
+            </select>
+          </label>
+          <label>Zoom
+            <select id="benchZoom">
+              <option value="fit">Fit</option>
+              <option value="1">100%</option>
+              <option value="2">200%</option>
+              <option value="4">400%</option>
+              <option value="8">800%</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="b-viewer bg-checker" id="benchViewer"><canvas id="benchView" class="fit" width="0" height="0"></canvas></div>
+      <div class="b-caption"><span id="benchCapL"></span><span id="benchCapR"></span></div>
+      <div class="b-empty" id="benchViewEmpty">Select a result row to inspect it.</div>
+    </section>
+  </section>
+
   <details>
     <summary>How it works</summary>
     <ul>
@@ -258,9 +505,11 @@
       <li><b>Metadata sources</b>: PNG text chunks, the EXIF in JPG, AVIF and JPEG XL files (as A1111 and ComfyUI write them), and the string attributes of EXR headers.</li>
       <li><b>EXR</b>: decoded with three.js's EXRLoader (also loaded from jsDelivr), then converted from linear light to 8-bit sRGB. Values brighter than white are clipped, and "lossless" means lossless from that 8-bit result.</li>
       <li>PNG colour profiles (iCCP/gAMA) are not carried over. ComfyUI and A1111 output plain sRGB, so this doesn't matter for their images.</li>
+      <li><b>Benchmark</b>: generated versions go through the same encoders and options as Convert (effort, Sharp YUV and JPEG background from the Convert tab), without the metadata. PNG, WebP, AVIF and JPEG XL are decoded exactly (built-in PNG decoder, jSquash for the rest), not through the browser's canvas, which rounds the colour of semi-transparent pixels. Images with transparency are compared over black and over white, and the worse score counts.</li>
     </ul>
   </details>
 </main>
+<div class="b-tip" id="benchTip"></div>
 
 <!-- Runs inside a Web Worker: decodes the source image and encodes it to the output format. -->
 <script type="text/plain" id="encoderWorker">
@@ -550,8 +799,133 @@ async function encodePng(img, opts) {
 
 const ENCODERS = { webp: encodeWebp, avif: encodeAvif, jxl: encodeJxl, jpeg: encodeJpeg, png: encodePng };
 const MAX_SIZE = { webp: 16383, jpeg: 65535 };
+const ENCODER_LABEL = { webp: "WebP", avif: "AVIF", jxl: "JPEG XL", jpeg: "JPEG", png: "PNG" };
 
-async function handle({ buf, opts, kind, thumb, format = "webp", resize }) {
+// An encoder that crashes (usually out of memory) is left broken, and every later image would fail
+// with "unreachable" or "null function". The error is flagged as a crash so the page replaces the
+// whole worker (dropping the encoder alone doesn't free its memory in time); when encoding runs on
+// the page itself, the encoder is dropped and reloaded instead.
+// The encoders get at most 2 GB. libjxl needs the most: about 15 megapixels is its limit.
+async function encodeWith(format, img, opts) {
+  try {
+    return await ENCODERS[format](img, opts);
+  } catch (e) {
+    if (format === "webp") encoder = null; else delete loaded[ENCODER_LABEL[format]];
+    if (e instanceof Error && !(e instanceof WebAssembly.RuntimeError) && !/^Aborted\(/.test(e.message)) throw e; // e.g. couldn't download it
+    const mp = (img.width * img.height / 1e6).toFixed(1);
+    throw Object.assign(new Error(format === "jxl" && mp > 14
+      ? `Too big for JPEG XL here: its encoder runs out of memory above about 15 megapixels in the browser, and this image is ${mp} MP. Resize it or pick another format.`
+      : `The ${ENCODER_LABEL[format]} encoder crashed, probably out of memory (this image is ${mp} MP): ${e?.message ?? e}`), { crashed: true });
+  }
+}
+
+/* ---------- Benchmark: encode the original, decode the result and measure it ---------- */
+
+// Benchmark decoding uses libavif for AVIF too: the browser's canvas premultiplies alpha,
+// which rounds the colour of faint pixels and would show up as compression error.
+let avifDecoder = null;
+async function decodeAvif(buf) {
+  avifDecoder ||= import(SQ + "avif@2.1.1/codec/dec/avif_dec.js").then(m => m.default({ noInitialRun: true }))
+    .catch(e => { avifDecoder = null; throw new Error("Could not load the AVIF decoder (needs internet the first time): " + (e.message || e)); });
+  const img = (await avifDecoder).decode(buf, 8);
+  if (!img) throw new Error("Could not decode this AVIF file");
+  return img;
+}
+function decodeExact(buf, kind) { return kind === "avif" ? decodeAvif(buf) : decode(buf, kind); }
+const DECODE_KIND = { webp: "webp", avif: "avif", jxl: "jxl", jpeg: "jpg", png: "png" };
+
+// Mean SSIM over 8x8 luma windows with a stride of 4 (Wang et al. constants).
+function ssim(x, y, w, h) {
+  const C1 = (0.01 * 255) ** 2, C2 = (0.03 * 255) ** 2;
+  const win = Math.min(8, w, h), step = Math.max(1, win >> 1), N = win * win;
+  let total = 0, count = 0;
+  for (let by = 0; by + win <= h; by += step) {
+    for (let bx = 0; bx + win <= w; bx += step) {
+      let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+      for (let j = 0; j < win; j++) {
+        let k = (by + j) * w + bx;
+        for (let i = 0; i < win; i++, k++) {
+          const a = x[k], b = y[k];
+          sx += a; sy += b; sxx += a * a; syy += b * b; sxy += a * b;
+        }
+      }
+      const mx = sx / N, my = sy / N;
+      const vx = sxx / N - mx * mx, vy = syy / N - my * my, cov = sxy / N - mx * my;
+      total += ((2 * mx * my + C1) * (2 * cov + C2)) / ((mx * mx + my * my + C1) * (vx + vy + C2));
+      count++;
+    }
+  }
+  return count ? total / count : 1;
+}
+
+// Colour is compared with both images composited over black and over white, and the worse result
+// counts. Together the two catch every visible change, transparency included, while colour hidden
+// under fully transparent pixels doesn't count. For opaque images both equal the plain RGB comparison.
+// Alpha is also measured on its own.
+function measure(ref, test) {
+  const { width: w, height: h } = ref;
+  if (test.width !== w || test.height !== h) throw new Error(`size ${test.width}×${test.height} ≠ original ${w}×${h}`);
+  const a = ref.data, b = test.data, n = w * h;
+  let mse = 0, maxErr = 0, ssimMin = 1, alphaSe = 0, alphaMax = 0, opaque = true;
+  for (const bg of [0, 255]) {
+    const ya = new Float32Array(n), yb = new Float32Array(n);
+    let se = 0;
+    for (let p = 0, i = 0; p < n; p++, i += 4) {
+      const aa = a[i + 3], ab = b[i + 3], ta = aa / 255, tb = ab / 255;
+      if (bg === 0) {
+        if (aa !== 255 || ab !== 255) opaque = false;
+        const da = aa - ab;
+        alphaSe += da * da;
+        if (Math.abs(da) > alphaMax) alphaMax = Math.abs(da);
+      }
+      const ra = a[i] * ta + bg * (1 - ta), ga = a[i + 1] * ta + bg * (1 - ta), ba = a[i + 2] * ta + bg * (1 - ta);
+      const rb = b[i] * tb + bg * (1 - tb), gb = b[i + 1] * tb + bg * (1 - tb), bb = b[i + 2] * tb + bg * (1 - tb);
+      const dr = ra - rb, dg = ga - gb, db = ba - bb;
+      se += dr * dr + dg * dg + db * db;
+      const m = Math.max(Math.abs(dr), Math.abs(dg), Math.abs(db));
+      if (m > maxErr) maxErr = m;
+      ya[p] = 0.299 * ra + 0.587 * ga + 0.114 * ba;
+      yb[p] = 0.299 * rb + 0.587 * gb + 0.114 * bb;
+    }
+    mse = Math.max(mse, se / (n * 3));
+    ssimMin = Math.min(ssimMin, ssim(ya, yb, w, h));
+    if (opaque) break; // over white is the same comparison
+  }
+  const psnr = e => e === 0 ? Infinity : 10 * Math.log10(255 * 255 / e);
+  return {
+    mse, psnr: psnr(mse), ssim: ssimMin,
+    maxErr: maxErr > 0 ? Math.max(1, Math.round(maxErr)) : 0, // composited values aren't whole numbers
+    alphaPsnr: psnr(alphaSe / n), alphaMaxErr: alphaMax,
+  };
+}
+
+let benchRef = null; // the original, decoded once per worker: {id, img}
+async function benchJob({ op, ref, buf, kind, format, opts }) {
+  if (op === "pixels") {
+    const img = await decodeExact(buf, kind);
+    return { rgba: img.data, width: img.width, height: img.height };
+  }
+  if (ref.buf && benchRef?.id !== ref.id) benchRef = { id: ref.id, img: await decodeExact(ref.buf, ref.kind) };
+  if (benchRef?.id !== ref.id) throw new Error("The original isn't loaded");
+  const img = benchRef.img;
+  if (op === "measure") return { metrics: measure(img, await decodeExact(buf, kind)) };
+
+  const max = MAX_SIZE[format];
+  if (max && (img.width > max || img.height > max)) throw new Error(`${img.width}×${img.height} is larger than ${format.toUpperCase()} allows (${max} px)`);
+  // Load the encoder first, so the encode time doesn't include downloading it.
+  // (First use, or the encoder was dropped after a crash.)
+  if (!(format === "webp" ? encoder : loaded[ENCODER_LABEL[format]])) await encodeWith(format, { data: new Uint8ClampedArray(4), width: 1, height: 1 }, opts);
+  // Encoders may change the pixels they're given (JPEG blends in place), so they get a copy.
+  const started = performance.now();
+  const result = await encodeWith(format, { data: img.data.slice(), width: img.width, height: img.height }, opts);
+  const ms = performance.now() - started;
+  if (!result) throw new Error("Encoding failed");
+  const bytes = new Uint8Array(result); // copy out of wasm memory
+  return { bytes, ms, metrics: measure(img, await decodeExact(bytes.slice().buffer, DECODE_KIND[format])) };
+}
+
+async function handle({ bench, buf, opts, kind, thumb, format = "webp", resize }) {
+  if (bench) return benchJob(bench);
   let img = await decode(buf, kind);
   if (thumb) return shrink(img, thumb);
   if (resize) {
@@ -560,7 +934,7 @@ async function handle({ buf, opts, kind, thumb, format = "webp", resize }) {
   }
   const max = MAX_SIZE[format];
   if (max && (img.width > max || img.height > max)) throw new Error(`${img.width}×${img.height} is larger than ${format.toUpperCase()} allows (${max} px)`);
-  const result = await ENCODERS[format](img, opts);
+  const result = await encodeWith(format, img, opts);
   if (!result) throw new Error("Encoding failed");
   return { bytes: new Uint8Array(result) }; // copy out of wasm memory
 }
@@ -569,9 +943,10 @@ if (typeof WorkerGlobalScope !== "undefined") {
   self.onmessage = async e => {
     try {
       const r = await handle(e.data);
-      self.postMessage(r, [(r.bytes || r.rgba).buffer]);
+      const out = r.bytes || r.rgba;
+      self.postMessage(r, out ? [out.buffer] : []);
     } catch (err) {
-      self.postMessage({ error: String(err && err.message || err) });
+      self.postMessage({ error: String(err && err.message || err), crashed: !!err?.crashed });
     }
   };
 }
@@ -1350,11 +1725,12 @@ async function filesFromDrop(dt) {
   return out;
 }
 
-// On the Convert tab the whole page is a drop target. On Restore metadata there are two cards,
+// On the Convert tab the whole page is a drop target. On Restore metadata and Benchmark there are two cards,
 // so a drop goes to the card under the pointer (anywhere else it's ignored).
 function setupPageDrop() {
   const hasFiles = e => [...(e.dataTransfer?.types || [])].includes("Files");
-  const cardAt = e => currentTab === "convert" ? el("cardConvert") : e.target.closest?.("#cardSources, #cardTargets") || null;
+  const cardAt = e => currentTab === "convert" ? el("cardConvert")
+    : e.target.closest?.(currentTab === "bench" ? "#cardBenchOrig, #cardBenchComp" : "#cardSources, #cardTargets") || null;
   const highlight = card => document.querySelectorAll(".files").forEach(c => c.classList.toggle("over", c === card));
   document.addEventListener("dragover", e => {
     if (!hasFiles(e)) return;
@@ -1377,6 +1753,8 @@ function setupPageDrop() {
 
 function addFilesTo(target, list) {
   if (target === "cardConvert" || target === "convert") addConvertFiles(list);
+  else if (target === "cardBenchOrig" || target === "benchOrig") { const x = list.find(x => fileKind(x.file.name)); if (x) loadBenchOriginal(x.file); }
+  else if (target === "cardBenchComp" || target === "benchComp") addBenchFiles(list);
   else if (target === "cardSources" || target === "sources") addSourceFiles(list);
   else addTargetFiles(list);
 }
@@ -1559,9 +1937,10 @@ function setBusy(b) {
   busy = b;
   document.body.classList.toggle("busy", b);
   document.querySelectorAll("button.act").forEach(x => x.disabled = b);
-  el("btnStop").hidden = !b;
+  el("btnStop").hidden = el("btnBenchStop").hidden = !b;
   renderConvert();
   renderTransfer();
+  renderBenchControls();
 }
 
 const store = {
@@ -1572,11 +1951,14 @@ const store = {
 let currentTab = "convert";
 document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showTab(t.dataset.tab)));
 function showTab(name) {
-  currentTab = name === "transfer" ? "transfer" : "convert";
+  currentTab = name === "transfer" || name === "bench" ? name : "convert";
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === currentTab));
   el("tab-convert").hidden = currentTab !== "convert";
   el("tab-transfer").hidden = currentTab !== "transfer";
+  el("tab-bench").hidden = currentTab !== "bench";
   store.set("tab", currentTab);
+  // Charts are sized to their box, which has no width while the tab is hidden. (Next frame: this also runs before the Benchmark code has loaded.)
+  if (currentTab === "bench") requestAnimationFrame(() => { renderBenchNote(); renderBenchCharts(); });
 }
 showTab(store.get("tab", "convert"));
 setupPageDrop();
@@ -1728,9 +2110,13 @@ function resizeOptions() {
 function hexToRgb(hex) { const n = parseInt(hex.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
 
 function encodeOptions() {
-  const format = outFormat(), level = +el("effort").value, quality = +el("quality").value, sharp = el("sharpYuv").checked;
+  return optionsFor(outFormat(), lossless(), +el("quality").value, +el("effort").value);
+}
+// Encoder options for one format and setting. The Benchmark tab uses this too.
+function optionsFor(format, ll, quality, level) {
+  const sharp = el("sharpYuv").checked;
   if (format === "webp") {
-    if (lossless()) {
+    if (ll) {
       const [method, q] = LOSSLESS_PRESETS[level];
       return { lossless: 1, exact: 1, method, quality: q };
     }
@@ -1738,9 +2124,9 @@ function encodeOptions() {
   }
   if (format === "avif") {
     const speed = 10 - level; // effort 4 = libavif's default speed 6
-    return lossless() ? { lossless: true, speed } : { quality, speed, enableSharpYUV: sharp };
+    return ll ? { lossless: true, speed } : { quality, speed, enableSharpYUV: sharp };
   }
-  if (format === "jxl") return lossless() ? { lossless: true, effort: level } : { quality, effort: level };
+  if (format === "jxl") return ll ? { lossless: true, effort: level } : { quality, effort: level };
   if (format === "jpeg") return { quality, background: hexToRgb(el("bgColor").value) };
   return { level }; // png: oxipng level
 }
@@ -1872,38 +2258,49 @@ function runOnPage(msg) {
 }
 
 function makeWorker() {
-  let w = null;
-  if (!noWorkers) {
-    try {
-      workerUrl ||= URL.createObjectURL(new Blob([el("encoderWorker").textContent], { type: "text/javascript" }));
-      w = new Worker(workerUrl, { type: "module" });
-    } catch { noWorkers = true; }
-  }
-  let pending = null, worked = false;
+  let w = null, pending = null, worked = false;
   const settle = (fn, v) => { const p = pending; pending = null; if (p) p[fn](v); };
-  if (w) {
-    w.onmessage = e => { worked = true; e.data.error ? settle("reject", new Error(e.data.error)) : settle("resolve", e.data); };
-    w.onerror = e => {
-      e.preventDefault();
-      if (!worked) { noWorkers = true; const p = pending; pending = null; if (p) runOnPage(p.msg).then(p.resolve, p.reject); }
-      else settle("reject", new Error(e.message || "Encoder worker failed"));
-    };
-  }
-  return {
+  const api = {
     run(msg, transfer) {
       if (noWorkers || !w) return runOnPage(msg);
       return new Promise((resolve, reject) => { pending = { resolve, reject, msg }; w.postMessage(msg, worked ? transfer : []); }); // keep buf usable for the fallback until the worker is known to work
     },
     terminate() { if (w) w.terminate(); settle("reject", new Error("Stopped")); },
   };
+  const start = () => {
+    if (noWorkers) return;
+    try {
+      workerUrl ||= URL.createObjectURL(new Blob([el("encoderWorker").textContent], { type: "text/javascript" }));
+      // A classic worker: Chrome won't start a module worker from a blob URL on a page opened from disk.
+      // The script only uses dynamic import(), which classic workers support.
+      w = new Worker(workerUrl);
+    } catch { noWorkers = true; return; }
+    w.onmessage = e => {
+      worked = true;
+      if (e.data.crashed) { // an encoder crashed: carry on with a fresh worker (it has to load the original again)
+        w.terminate();
+        api.refId = undefined;
+        start();
+      }
+      e.data.error ? settle("reject", new Error(e.data.error)) : settle("resolve", e.data);
+    };
+    w.onerror = e => {
+      e.preventDefault();
+      if (!worked) { noWorkers = true; const p = pending; pending = null; if (p) runOnPage(p.msg).then(p.resolve, p.reject); }
+      else settle("reject", new Error(e.message || "Encoder worker failed"));
+    };
+  };
+  start();
+  return api;
 }
 
 let stopRequested = false;
-el("btnStop").addEventListener("click", () => {
+function stopAll() {
   stopRequested = true;
   workers.forEach(w => w.terminate());
   workers = [];
-});
+}
+el("btnStop").addEventListener("click", stopAll);
 
 // Finished conversions, kept in memory so a retry (failed save, failed ZIP download, Stop)
 // reuses them instead of encoding again. Keyed by source file + format + exact encoder options;
@@ -2320,6 +2717,632 @@ el("btnClearTargets").addEventListener("click", () => {
   renderTransfer();
 });
 
+/* ---------- Benchmark tab ---------- */
+
+// Plain-language grades derived from SSIM (rules of thumb).
+const GRADES = [
+  { min: 0.996, label: "Pristine", icon: "◆", color: "var(--st-good)", desc: "Hard to tell apart from the original even zoomed in" },
+  { min: 0.99, label: "Excellent", icon: "★", color: "var(--st-good)", desc: "Looks identical to the original at normal size" },
+  { min: 0.97, label: "Good", icon: "✔", color: "var(--st-good)", desc: "Differences only visible when zoomed in" },
+  { min: 0.94, label: "Fair", icon: "!", color: "var(--st-warning)", desc: "Small artifacts noticeable on a close look" },
+  { min: 0.90, label: "Poor", icon: "▼", color: "var(--st-serious)", desc: "Artifacts clearly visible" },
+  { min: -Infinity, label: "Bad", icon: "✖", color: "var(--st-critical)", desc: "Heavily degraded" },
+];
+const gradeOf = ssim => GRADES.find(g => ssim >= g.min);
+
+// The "Quality I need" target: a grade, or a custom minimum SSIM.
+function benchTarget() {
+  if (el("benchTarget").value !== "custom") {
+    const value = +el("benchTarget").value;
+    return { value, text: gradeOf(value).label.toLowerCase() + " quality", short: gradeOf(value).label };
+  }
+  const v = +el("benchTargetCustom").value;
+  const value = Number.isFinite(v) && v > 0 ? Math.min(1, v) : 0.99;
+  return { value, text: "SSIM " + value, short: "SSIM " + value };
+}
+const badge = g => `<span class="b-badge" title="${g.desc}"><span class="b-gi" style="color:${g.color}">${g.icon}</span>${g.label}</span>`;
+
+const KIND_LABEL = { png: "PNG", webp: "WebP", jpg: "JPEG", avif: "AVIF", jxl: "JPEG XL", exr: "EXR" };
+const DECODE_KIND = { webp: "webp", avif: "avif", jxl: "jxl", jpeg: "jpg", png: "png" }; // output format -> input kind
+
+const bench = {
+  orig: null,       // {name, size, kind, buf, w, h, data, hasAlpha, canvas, refId}
+  items: [],        // results
+  selected: null,   // item id
+  selPx: null,      // decoded pixels of the selected item: {canvas, data}
+  split: 0.5,
+  sort: null,       // {key, dir}
+  nextId: 1,
+  refs: 0,          // originals loaded so far: tells the workers when theirs is out of date
+  seriesOrder: [],  // formats in first-seen order -> fixed colour slots
+  recommended: null,
+};
+const benchLog = el("benchLog");
+
+const fmtSize = b => b < 1024 ? b + " B" : b < 1048576 ? (b / 1024).toFixed(1) + " KB" : (b / 1048576).toFixed(2) + " MB";
+const fmtNum = (v, d) => v == null || Number.isNaN(v) ? "—" : v === Infinity ? "∞" : v.toFixed(d);
+const fmtSaved = s => s == null ? "—" : s >= 0 ? `${Math.round(s * 100)}%` : `${Math.round(-s * 100)}% larger`;
+const fmtMs = ms => ms == null ? "—" : ms < 1000 ? Math.round(ms) + " ms" : (ms / 1000).toFixed(1) + " s";
+
+function seriesColor(format) {
+  let i = bench.seriesOrder.indexOf(format);
+  if (i < 0) { bench.seriesOrder.push(format); i = bench.seriesOrder.length - 1; }
+  return `var(--series-${(i % 8) + 1})`;
+}
+
+// Effort used for generated versions: whatever the Convert tab has for that format.
+function effortFor(f) {
+  const e = FORMATS[f].effort;
+  return Math.min(e.max, Math.max(e.min, effortByFormat[f] ?? e.def));
+}
+
+// Decoding for the viewer goes through its own worker, one image at a time.
+let pixelWorker = null, pixelChain = Promise.resolve();
+function decodePixels(bytes, kind) {
+  const job = pixelChain.then(() => {
+    pixelWorker ||= makeWorker();
+    const buf = bytes.slice().buffer;
+    return pixelWorker.run({ bench: { op: "pixels", buf, kind } }, [buf]);
+  });
+  pixelChain = job.catch(() => {});
+  return job.then(px => {
+    const data = new Uint8ClampedArray(px.rgba.buffer, px.rgba.byteOffset, px.rgba.length);
+    const canvas = document.createElement("canvas");
+    canvas.width = px.width; canvas.height = px.height;
+    canvas.getContext("2d").putImageData(new ImageData(data, px.width, px.height), 0, 0);
+    return { w: px.width, h: px.height, data, canvas };
+  });
+}
+
+async function loadBenchOriginal(file) {
+  const kind = fileKind(file.name);
+  if (busy || !kind) return;
+  // The old original and its results go now, so nothing can run against them while this one decodes.
+  const refId = ++bench.refs;
+  // Fresh workers too: WebAssembly memory never shrinks, so after a big image the encoders would keep
+  // their memory and leave too little for the next one (JPEG XL then crashes).
+  workers.forEach(w => w.terminate());
+  workers = [];
+  Object.assign(bench, { orig: null, items: [], selected: null, selPx: null, seriesOrder: [] });
+  benchLog.textContent = "";
+  renderBench();
+  el("cardBenchOrig").classList.remove("empty");
+  el("benchOrigInfo").innerHTML = `<span class="muted">Decoding ${esc(file.name)}…</span>`;
+  try {
+    const buf = await file.arrayBuffer();
+    const px = await decodePixels(new Uint8Array(buf), kind);
+    if (refId !== bench.refs) return; // another original was picked meanwhile
+    let hasAlpha = false;
+    for (let i = 3; i < px.data.length; i += 4) if (px.data[i] !== 255) { hasAlpha = true; break; }
+    bench.orig = { name: file.name, size: file.size, kind, buf, hasAlpha, refId, ...px };
+    el("benchOrigInfo").innerHTML = `<strong>${esc(file.name)}</strong> · ${px.w}×${px.h} · ${fmtSize(file.size)} · ${KIND_LABEL[kind]}` +
+      (hasAlpha ? " · has transparency" : "");
+  } catch (e) {
+    if (refId !== bench.refs) return;
+    el("benchOrigInfo").innerHTML = `<span class="err">Could not decode ${esc(file.name)}: ${esc(e.message || e)}</span>`;
+  }
+  applyBenchZoom();
+  renderBench();
+}
+
+function benchSettings() {
+  return {
+    formats: [...document.querySelectorAll("#benchFormats input:checked")].map(i => i.value),
+    qualities: [...new Set(el("benchQualities").value.split(/[\s,;]+/).filter(Boolean).map(Number))]
+      .filter(q => Number.isInteger(q) && q >= 1 && q <= 100),
+    lossless: el("benchLossless").checked,
+  };
+}
+
+// One job per format and setting, in the order they appear in the table.
+function sweepJobs() {
+  const o = bench.orig, base = o.name.replace(/\.[^.]+$/, ""), { formats, qualities, lossless } = benchSettings();
+  const jobs = [];
+  for (const f of formats) {
+    const F = FORMATS[f], level = F.effort ? effortFor(f) : null;
+    const settings = F.modes.includes("lossy") ? qualities.map(q => ({ ll: false, q })) : [];
+    if (F.modes.includes("lossless") && (lossless || F.modes.length === 1)) settings.push({ ll: true });
+    for (const { ll, q } of settings) {
+      const tag = ll ? "lossless" : "q" + q;
+      jobs.push({
+        item: { name: `${base}_${tag}.${F.ext}`, format: F.label, fkey: f, quality: ll ? Infinity : q, lossless: ll, effort: level, generated: true },
+        msg: { op: "encode", format: f, opts: optionsFor(f, ll, q, level) },
+      });
+    }
+  }
+  return jobs;
+}
+
+async function addBenchFiles(list) {
+  if (busy) return;
+  if (!bench.orig) { benchLog.textContent = "Choose an original first."; return; }
+  const jobs = list.filter(x => fileKind(x.file.name)).sort(byPath).map(({ file, path }) => {
+    const kind = fileKind(file.name);
+    return { file, item: { name: baseName(path), format: KIND_LABEL[kind], kind, file, size: file.size }, msg: { op: "measure", kind } };
+  });
+  if (jobs.length) await runBenchJobs(jobs, "measured");
+}
+
+// Runs the jobs on the worker pool. Each worker decodes the original once and keeps it.
+async function runBenchJobs(jobs, verb) {
+  const o = bench.orig;
+  let next = 0, done = 0, failed = 0;
+  const started = performance.now();
+  stopRequested = false;
+  setBusy(true);
+  const progress = () => { benchLog.textContent = `${done + failed} / ${jobs.length} done` + (failed ? ` (${failed} failed)` : "") + "…"; };
+  progress();
+
+  while (workers.length < Math.min(poolSize, jobs.length)) workers.push(makeWorker());
+  await Promise.all(workers.slice(0, jobs.length).map(async worker => {
+    while (!stopRequested && next < jobs.length) {
+      const job = jobs[next++];
+      const item = { id: bench.nextId++, ...job.item };
+      try {
+        const msg = { ...job.msg, ref: { id: o.refId, kind: o.kind } };
+        if (worker.refId !== o.refId) msg.ref.buf = o.buf; // copied, not transferred: every worker needs it
+        if (job.file) msg.buf = await job.file.arrayBuffer();
+        const r = await worker.run({ bench: msg }, msg.buf ? [msg.buf] : []);
+        worker.refId = o.refId;
+        if (r.bytes) { item.bytes = r.bytes; item.size = r.bytes.length; }
+        Object.assign(item, r.metrics, { ms: r.ms, bpp: item.size * 8 / (o.w * o.h), ratio: o.size / item.size, saved: 1 - item.size / o.size });
+        done++;
+      } catch (e) {
+        if (stopRequested) break;
+        item.error = e.message || String(e);
+        failed++;
+      }
+      seriesColor(item.format);
+      bench.items.push(item);
+      progress();
+      renderBenchSoon();
+    }
+  }));
+
+  const secs = ((performance.now() - started) / 1000).toFixed(1);
+  benchLog.textContent = (stopRequested ? "Stopped. " : "") + `${done} ${verb}` + (failed ? `, ${failed} failed` : "") + ` in ${secs}s.`;
+  setBusy(false);
+  renderBench();
+}
+
+/* table */
+function sortedBenchItems() {
+  const items = [...bench.items];
+  if (bench.sort) {
+    const { key, dir } = bench.sort;
+    items.sort((a, b) => {
+      const va = a[key], vb = b[key];
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      return (typeof va === "string" ? va.localeCompare(vb) : va === vb ? 0 : va < vb ? -1 : 1) * dir;
+    });
+  }
+  return items;
+}
+
+function settingOf(it) {
+  if (!it.generated) return "—";
+  return (it.lossless ? "lossless" : "q" + it.quality) + (it.effort != null ? ` · e${it.effort}` : "");
+}
+
+function renderBenchTable() {
+  const tb = el("benchRows");
+  el("benchTable").classList.toggle("b-noalpha", !bench.orig?.hasAlpha);
+  if (!bench.items.length) {
+    tb.innerHTML = `<tr><td colspan="15" class="b-empty">${bench.orig ? "Generate versions or add compressed files." : "Choose an original, then add compressed versions."}</td></tr>`;
+    return;
+  }
+  const target = benchTarget().value;
+  tb.innerHTML = sortedBenchItems().map(it => {
+    const sw = `<span class="b-swatch" style="background:${seriesColor(it.format)}"></span>`;
+    const actions = `${it.generated ? `<button class="b-act" data-dl="${it.id}" title="Download">⤓</button>` : ""}<button class="b-act" data-rm="${it.id}" title="Remove">✕</button>`;
+    if (it.error) {
+      return `<tr data-id="${it.id}"><td class="b-name" title="${esc(it.name)}">${esc(it.name)}</td><td>${sw}${esc(it.format)}</td><td class="b-err" colspan="12">${esc(it.error)}</td><td>${actions}</td></tr>`;
+    }
+    // The badge stays outside the truncated name, so it's never cut off.
+    const name = it.id === bench.recommended
+      ? `<span class="b-fname">${esc(it.name)}</span><span class="b-star" title="Smallest file that meets your quality target">BEST</span>`
+      : esc(it.name);
+    const cls = [it.id === bench.selected && "sel", it.ssim < target && "b-below"].filter(Boolean).join(" ");
+    return `<tr data-id="${it.id}" class="${cls}">
+      <td class="b-name" title="${esc(it.name)}">${name}</td>
+      <td>${sw}${esc(it.format)}</td>
+      <td>${badge(gradeOf(it.ssim))}</td>
+      <td>${settingOf(it)}</td>
+      <td>${fmtSize(it.size)}</td>
+      <td>${fmtSaved(it.saved)}</td>
+      <td>${fmtNum(it.bpp, 3)}</td>
+      <td>${fmtNum(it.ssim, 4)}</td>
+      <td>${fmtNum(it.psnr, 2)}</td>
+      <td>${fmtNum(it.mse, 2)}</td>
+      <td>${it.maxErr}</td>
+      <td class="b-alpha">${fmtNum(it.alphaPsnr, 2)}</td>
+      <td class="b-alpha">${it.alphaMaxErr}</td>
+      <td>${fmtMs(it.ms)}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join("");
+}
+
+/* summary */
+function renderBenchSummary() {
+  const box = el("benchSummary");
+  const ok = bench.items.filter(i => !i.error);
+  bench.recommended = null;
+  if (!ok.length) {
+    box.innerHTML = `<div class="b-empty">The summary appears here once you add compressed versions.</div>`;
+    return;
+  }
+  const { value: target, text: tq } = benchTarget();
+  const smallestOf = list => list.reduce((a, b) => (b.size < a.size ? b : a));
+  const meets = ok.filter(i => i.ssim >= target);
+  const pick = meets.length ? smallestOf(meets) : null;
+  const best = ok.reduce((a, b) => (b.ssim > a.ssim || (b.ssim === a.ssim && b.size < a.size) ? b : a));
+  const smallest = smallestOf(ok);
+  bench.recommended = pick && pick.id;
+
+  const describe = it => `${badge(gradeOf(it.ssim))}<span>${fmtSize(it.size)}</span><span>${fmtSaved(it.saved)}${it.saved >= 0 ? " saved" : ""}</span>`;
+  // One tile per file: when the best pick is also the smallest (or best) file, its labels are combined.
+  const tiles = [];
+  for (const [label, also, it] of [[pick && `Best pick: smallest file at ${tq}`, "", pick],
+    ["Best quality", "the best quality", best], ["Smallest file", "the smallest file overall", smallest]]) {
+    if (!it) continue;
+    const t = tiles.find(t => t.it === it);
+    if (t) t.also.push(also); else tiles.push({ it, label, also: [] });
+  }
+  const tile = ({ it, label, also }) => `<div class="b-tile${it === pick ? " main" : ""}${it.id === bench.selected ? " sel" : ""}" data-item="${it.id}" title="Show it in the visual comparison">
+      <div class="lbl">${label}${also.length ? `, and ${also.join(" and ")}` : ""}</div><div class="val" title="${esc(it.name)}">${esc(it.name)}</div>
+      <div class="meta">${describe(it)}</div></div>`;
+
+  let headline;
+  if (pick) {
+    headline = `<strong>Best pick: ${esc(pick.name)}</strong>. It reaches ${tq} at ${fmtSize(pick.size)}, ` +
+      (pick.saved >= 0 ? `${fmtSaved(pick.saved)} smaller than the original.` : `but it is ${fmtSaved(pick.saved)} than the original.`);
+  } else {
+    headline = `<strong>No version reaches ${tq}.</strong> The closest is ${esc(best.name)} ` +
+      `(${gradeOf(best.ssim).label}, SSIM ${fmtNum(best.ssim, 4)}). Try higher quality settings or a lower target.`;
+  }
+
+  const verdicts = [];
+  if (meets.length === ok.length && ok.length > 1) {
+    verdicts.push(`Every version reaches ${tq}, so the best pick is simply the smallest file. Add lower quality settings or raise the target to see where quality starts to drop.`);
+  }
+  // Per-format verdicts: the smallest file of each format that meets the target.
+  const perFormat = [...new Set(ok.map(i => i.format))].map(f => {
+    const m = meets.filter(i => i.format === f);
+    return { format: f, best: m.length ? smallestOf(m) : null };
+  });
+  const ranked = perFormat.filter(p => p.best).sort((a, b) => a.best.size - b.best.size);
+  if (ranked.length > 1) {
+    const w = ranked[0];
+    for (const o of ranked.slice(1)) {
+      const pct = Math.round((1 - w.best.size / o.best.size) * 100);
+      verdicts.push(`At ${tq}, <strong>${esc(w.format)}</strong> files are <strong>${pct}% smaller</strong> than ${esc(o.format)} ` +
+        `(${fmtSize(w.best.size)} vs ${fmtSize(o.best.size)}).`);
+    }
+  }
+  for (const p of perFormat.filter(p => !p.best)) verdicts.push(`None of the ${esc(p.format)} files reach ${tq}.`);
+  if (bench.orig?.hasAlpha && ok.some(i => i.format === "JPEG")) {
+    verdicts.push("JPEG has no transparency: transparent areas are filled with the background colour, which counts against its scores.");
+  }
+  const lossless = ok.filter(i => i.mse === 0);
+  if (lossless.length) verdicts.push(`${lossless.map(i => esc(i.name)).join(", ")} ${lossless.length > 1 ? "look" : "looks"} exactly like the original, pixel for pixel (lossless).`);
+  const bigger = ok.filter(i => i.saved < 0);
+  if (bigger.length) verdicts.push(`${bigger.length} file${bigger.length > 1 ? "s are" : " is"} larger than the original. Compressing those made things worse.`);
+
+  box.innerHTML = `<p class="b-headline">${headline}</p>
+    <div class="b-tiles">${tiles.map(tile).join("")}</div>
+    ${verdicts.length ? `<ul class="b-verdicts">${verdicts.map(v => `<li>${v}</li>`).join("")}</ul>` : ""}`;
+}
+
+function exportBenchCsv() {
+  const head = ["file", "format", "grade", "setting", "effort", "bytes", "saved_pct", "ratio", "bpp", "ssim", "psnr_db", "mse", "max_err",
+    "alpha_psnr_db", "alpha_max_err", "encode_ms", "error"];
+  const inf = v => v === Infinity ? "inf" : v ?? "";
+  const rows = sortedBenchItems().map(it => [it.name, it.format, it.error ? "" : gradeOf(it.ssim).label,
+    it.generated ? (it.lossless ? "lossless" : "q" + it.quality) : "", it.effort ?? "", it.size,
+    it.saved != null ? (it.saved * 100).toFixed(1) : "", it.ratio ?? "", it.bpp ?? "", it.ssim ?? "", inf(it.psnr), it.mse ?? "", it.maxErr ?? "",
+    inf(it.alphaPsnr), it.alphaMaxErr ?? "", it.ms != null ? Math.round(it.ms) : "", it.error ?? ""]);
+  const csv = [head, ...rows].map(r => r.map(v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v).join(",")).join("\n");
+  saveBlob(csv, (bench.orig ? bench.orig.name.replace(/\.[^.]+$/, "") : "results") + "_benchmark.csv", "text/csv");
+}
+
+/* charts */
+function niceTicks(min, max, count = 5) {
+  if (max - min < 1e-9) { min -= Math.abs(min) * 0.01 || 0.5; max += Math.abs(max) * 0.01 || 0.5; }
+  const raw = (max - min) / count;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const f = raw / mag;
+  const step = (f >= 7.5 ? 10 : f >= 3.5 ? 5 : f >= 1.5 ? 2 : 1) * mag;
+  const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+  const ticks = [];
+  for (let v = lo; v <= hi + step / 2; v += step) ticks.push(+v.toFixed(10));
+  return { lo, hi, ticks, step };
+}
+
+// Lossless results are left out: far to the right at SSIM 1 (PSNR ∞), they'd squeeze every lossy point into a corner.
+function renderChart(box, key, clampMax, target) {
+  const pts = bench.items.filter(it => !it.error && it.mse !== 0 && Number.isFinite(it[key]));
+  const W = Math.max(280, box.clientWidth), H = 260;
+  const m = { l: 48, r: 12, t: 10, b: 34 };
+  if (!pts.length) {
+    box.innerHTML = `<div class="b-empty" style="height:${H}px">${bench.items.some(i => i.mse === 0) ? "Lossless results aren't plotted" : "No data yet"}</div>`;
+    return;
+  }
+  const xs = niceTicks(0, Math.max(...pts.map(p => p.bpp)));
+  const ys = niceTicks(Math.min(...pts.map(p => p[key]), target ?? Infinity), Math.max(...pts.map(p => p[key])));
+  if (clampMax != null && ys.hi > clampMax) { ys.hi = clampMax; ys.ticks = ys.ticks.filter(t => t <= clampMax + 1e-9); }
+  const X = v => m.l + (v - xs.lo) / (xs.hi - xs.lo) * (W - m.l - m.r);
+  const Y = v => m.t + (1 - (v - ys.lo) / (ys.hi - ys.lo)) * (H - m.t - m.b);
+  const tickDigits = s => Math.max(0, -Math.floor(Math.log10(s)));
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="${key} versus bits per pixel">`;
+  for (const t of ys.ticks) {
+    svg += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(t)}" y2="${Y(t)}" stroke="var(--grid)"/>`;
+    svg += `<text x="${m.l - 6}" y="${Y(t) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${t.toFixed(tickDigits(ys.step))}</text>`;
+  }
+  for (const t of xs.ticks) {
+    svg += `<text x="${X(t)}" y="${H - m.b + 16}" text-anchor="middle" font-size="11" fill="var(--muted)">${t.toFixed(tickDigits(xs.step))}</text>`;
+  }
+  svg += `<line x1="${m.l}" x2="${W - m.r}" y1="${H - m.b}" y2="${H - m.b}" stroke="var(--border)"/>`;
+  svg += `<text x="${(m.l + W - m.r) / 2}" y="${H - 2}" text-anchor="middle" font-size="11" fill="var(--muted)">bits per pixel</text>`;
+
+  if (target != null) {
+    svg += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(target)}" y2="${Y(target)}" stroke="var(--muted)" stroke-dasharray="4 4"/>`;
+    svg += `<text x="${W - m.r}" y="${Y(target) - 4}" text-anchor="end" font-size="11" fill="var(--muted)">your target (${benchTarget().short})</text>`;
+  }
+
+  // One line per format, then markers on top.
+  const groups = {};
+  for (const p of pts) (groups[p.format] ||= []).push(p);
+  for (const [fmt, g] of Object.entries(groups)) {
+    g.sort((a, b) => a.bpp - b.bpp);
+    if (g.length > 1) {
+      svg += `<polyline fill="none" stroke="${seriesColor(fmt)}" stroke-width="2" stroke-linejoin="round" points="${g.map(p => `${X(p.bpp)},${Y(p[key])}`).join(" ")}"/>`;
+    }
+  }
+  for (const p of pts) {
+    const sel = p.id === bench.selected;
+    svg += `<circle cx="${X(p.bpp)}" cy="${Y(p[key])}" r="${sel ? 6 : 4}" fill="${seriesColor(p.format)}" stroke="${sel ? "var(--text)" : "var(--panel)"}" stroke-width="2"/>`;
+  }
+  for (const p of pts) {
+    svg += `<circle cx="${X(p.bpp)}" cy="${Y(p[key])}" r="11" fill="transparent" data-pt="${p.id}" style="cursor:pointer"/>`;
+  }
+  box.innerHTML = svg + "</svg>";
+}
+
+function renderBenchCharts() {
+  const fmts = [...new Set(bench.items.filter(i => !i.error && i.mse !== 0).map(i => i.format))];
+  el("benchLegend").innerHTML = (fmts.length > 1
+    ? fmts.map(f => `<span><span class="b-swatch" style="background:${seriesColor(f)}"></span>${esc(f)}</span>`).join("")
+    : "") + (bench.items.some(i => i.mse === 0) ? `<span>Lossless results aren't plotted.</span>` : "");
+  renderChart(el("benchChartSsim"), "ssim", 1, benchTarget().value);
+  renderChart(el("benchChartPsnr"), "psnr");
+}
+
+const benchTip = el("benchTip");
+document.addEventListener("pointerover", e => {
+  const id = e.target.dataset?.pt;
+  if (!id) return;
+  const it = bench.items.find(i => i.id === +id);
+  if (!it) return;
+  benchTip.innerHTML = `<strong>${esc(it.name)}</strong><br>
+    ${badge(gradeOf(it.ssim))}<br>
+    <span class="b-k">Size</span> ${fmtSize(it.size)} · <span class="b-k">BPP</span> ${fmtNum(it.bpp, 3)}<br>
+    <span class="b-k">SSIM</span> ${fmtNum(it.ssim, 4)} · <span class="b-k">PSNR</span> ${fmtNum(it.psnr, 2)} dB`;
+  benchTip.style.display = "block";
+});
+document.addEventListener("pointermove", e => {
+  if (benchTip.style.display !== "block") return;
+  benchTip.style.left = Math.min(e.clientX + 14, window.innerWidth - benchTip.offsetWidth - 8) + "px";
+  benchTip.style.top = (e.clientY + 14) + "px";
+});
+document.addEventListener("pointerout", e => { if (e.target.dataset?.pt) benchTip.style.display = "none"; });
+
+/* viewer */
+const benchView = el("benchView");
+
+async function selectBenchItem(id) {
+  const it = bench.items.find(i => i.id === id);
+  if (!it || it.error) return;
+  bench.selected = id;
+  bench.selPx = null;
+  renderBenchSummary();
+  renderBenchTable();
+  renderBenchCharts();
+  try {
+    const bytes = it.bytes || new Uint8Array(await it.file.arrayBuffer());
+    const px = await decodePixels(bytes, it.fkey ? DECODE_KIND[it.fkey] : it.kind);
+    if (bench.selected !== id) return;
+    bench.selPx = px;
+  } catch (e) {
+    benchLog.textContent = `Could not show ${it.name}: ${e.message || e}`;
+  }
+  drawBenchViewer();
+}
+
+function drawBenchViewer() {
+  const o = bench.orig, px = bench.selPx;
+  const it = bench.items.find(i => i.id === bench.selected);
+  const has = !!(o && px && it);
+  const mode = el("benchMode").value;
+  el("benchAmpWrap").hidden = mode !== "diff";
+  el("benchViewEmpty").hidden = has;
+  el("benchViewer").hidden = !has;
+  el("benchCapL").textContent = el("benchCapR").textContent = "";
+  if (!has) return;
+
+  if (benchView.width !== o.w || benchView.height !== o.h) { benchView.width = o.w; benchView.height = o.h; }
+  const ctx = benchView.getContext("2d");
+  ctx.clearRect(0, 0, o.w, o.h);
+
+  if (mode === "slider") {
+    // Each side is drawn on its own: drawn on top of each other, transparent pixels would show the other image.
+    const sx = Math.round(bench.split * o.w);
+    if (sx < o.w) ctx.drawImage(px.canvas, sx, 0, o.w - sx, o.h, sx, 0, o.w - sx, o.h);
+    if (sx > 0) ctx.drawImage(o.canvas, 0, 0, sx, o.h, 0, 0, sx, o.h);
+    const lw = Math.max(1, Math.round(o.w / (benchView.clientWidth || o.w)));
+    ctx.fillStyle = "rgba(0,0,0,.6)";
+    ctx.fillRect(sx - lw * 1.5, 0, lw * 3, o.h);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(sx - lw / 2, 0, lw, o.h);
+    el("benchCapL").textContent = "◀ Original";
+    el("benchCapR").textContent = `${it.name} ▶`;
+  } else if (mode === "diff") {
+    // The bigger difference over black or over white, so changes in transparency show up too.
+    const amp = +el("benchAmp").value;
+    const out = ctx.createImageData(o.w, o.h);
+    const a = o.data, b = px.data, d = out.data;
+    for (let i = 0; i < a.length; i += 4) {
+      const ta = a[i + 3] / 255, tb = b[i + 3] / 255, dw = 255 * (tb - ta);
+      let m = 0;
+      for (let c = 0; c < 3; c++) {
+        const d0 = a[i + c] * ta - b[i + c] * tb;
+        m = Math.max(m, Math.abs(d0), Math.abs(d0 + dw));
+      }
+      d[i] = d[i + 1] = d[i + 2] = Math.min(255, amp * m);
+      d[i + 3] = 255;
+    }
+    ctx.putImageData(out, 0, 0);
+    el("benchCapL").textContent = `|original − compressed| × ${amp}  (black = identical)`;
+    el("benchCapR").textContent = it.name;
+  } else {
+    ctx.drawImage(mode === "original" ? o.canvas : px.canvas, 0, 0);
+    el("benchCapL").textContent = mode === "original" ? o.name : it.name;
+  }
+}
+
+function applyBenchZoom() {
+  const z = el("benchZoom").value;
+  benchView.classList.toggle("fit", z === "fit");
+  benchView.classList.toggle("pix", z !== "fit" && +z > 1);
+  benchView.style.width = z === "fit" || !bench.orig ? "" : bench.orig.w * +z + "px";
+  drawBenchViewer();
+}
+
+let splitDragging = false;
+function setSplit(e) {
+  const r = benchView.getBoundingClientRect();
+  bench.split = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  if (el("benchMode").value === "slider") drawBenchViewer();
+}
+benchView.addEventListener("pointerdown", e => { splitDragging = true; benchView.setPointerCapture(e.pointerId); setSplit(e); });
+benchView.addEventListener("pointermove", e => { if (splitDragging) setSplit(e); });
+benchView.addEventListener("pointerup", () => { splitDragging = false; });
+
+/* wiring */
+function renderBenchNote() {
+  const efforts = ["webp", "avif", "jxl", "png"].map(f => `${FORMATS[f].label} ${effortFor(f)}`).join(" · ");
+  el("benchNote").innerHTML = `Effort comes from the Convert tab (${efforts}), as do Sharp YUV (${el("sharpYuv").checked ? "on" : "off"}) ` +
+    `and JPEG's background colour. AVIF's quality scale runs lower than the others'. PNG is always lossless.`;
+}
+function renderBenchControls() {
+  el("btnBenchRun").disabled = busy || !bench.orig;
+  el("btnBenchClear").disabled = busy || !bench.items.length;
+  el("btnBenchCsv").disabled = !bench.items.length;
+}
+function renderBench() {
+  renderBenchControls();
+  renderBenchSummary();
+  renderBenchTable();
+  renderBenchCharts();
+  drawBenchViewer();
+}
+const renderBenchSoon = throttled(() => { renderBenchControls(); renderBenchSummary(); renderBenchTable(); renderBenchCharts(); });
+
+function saveBenchSettings() {
+  store.set("bench", { ...benchSettings(), qualities: el("benchQualities").value, target: el("benchTarget").value, targetCustom: el("benchTargetCustom").value });
+}
+(() => {
+  const s = store.get("bench", null);
+  if (!s) return;
+  if (Array.isArray(s.formats)) document.querySelectorAll("#benchFormats input").forEach(i => i.checked = s.formats.includes(i.value));
+  if (typeof s.qualities === "string") el("benchQualities").value = s.qualities;
+  el("benchLossless").checked = !!s.lossless;
+  if (el("benchTarget").querySelector(`option[value="${s.target}"]`)) el("benchTarget").value = s.target;
+  if (s.targetCustom) el("benchTargetCustom").value = s.targetCustom;
+  el("benchTargetCustom").hidden = el("benchTarget").value !== "custom";
+})();
+document.querySelectorAll("#benchFormats input, #benchQualities, #benchLossless").forEach(i => i.addEventListener("input", saveBenchSettings));
+
+el("btnBenchRun").addEventListener("click", () => {
+  if (!bench.orig || busy) return;
+  const jobs = sweepJobs();
+  if (!jobs.length) { benchLog.textContent = "Pick at least one format, and qualities from 1 to 100."; return; }
+  runBenchJobs(jobs, "encoded and measured");
+});
+el("btnBenchStop").addEventListener("click", stopAll);
+el("btnBenchClear").addEventListener("click", () => {
+  Object.assign(bench, { items: [], selected: null, selPx: null, seriesOrder: [] });
+  benchLog.textContent = "";
+  renderBench();
+});
+el("btnBenchCsv").addEventListener("click", exportBenchCsv);
+function onTargetChange() {
+  el("benchTargetCustom").hidden = el("benchTarget").value !== "custom";
+  saveBenchSettings();
+  renderBenchSummary();
+  renderBenchTable();
+  renderBenchCharts();
+}
+el("benchTarget").addEventListener("change", () => {
+  onTargetChange();
+  if (el("benchTarget").value === "custom") el("benchTargetCustom").focus();
+});
+el("benchTargetCustom").addEventListener("input", onTargetChange);
+// A tile selects its file and scrolls down to the visual comparison.
+el("benchSummary").addEventListener("click", e => {
+  const t = e.target.closest("[data-item]");
+  if (!t) return;
+  selectBenchItem(+t.dataset.item);
+  el("benchViewer").closest(".b-card").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+el("benchGrades").innerHTML = GRADES.map((g, i) =>
+  `<tr><td>${badge(g)}</td><td>${i === GRADES.length - 1 ? `SSIM below ${GRADES[i - 1].min}` : `SSIM ${g.min} or higher`}</td><td>${g.desc}</td></tr>`).join("");
+el("benchMode").addEventListener("change", drawBenchViewer);
+el("benchZoom").addEventListener("change", applyBenchZoom);
+el("benchBg").addEventListener("change", () => { el("benchViewer").className = "b-viewer bg-" + el("benchBg").value; });
+el("benchAmp").addEventListener("input", () => { el("benchAmpVal").textContent = el("benchAmp").value + "×"; drawBenchViewer(); });
+// The note quotes the Convert tab's settings.
+document.querySelectorAll("#effort, #sharpYuv, input[name='ofmt']").forEach(i => i.addEventListener("input", renderBenchNote));
+
+el("benchRows").addEventListener("click", e => {
+  const dl = e.target.closest("[data-dl]");
+  if (dl) {
+    const it = bench.items.find(i => i.id === +dl.dataset.dl);
+    if (it) saveBlob(it.bytes, it.name, MIME[it.fkey]);
+    return;
+  }
+  const rm = e.target.closest("[data-rm]");
+  if (rm) {
+    if (busy) return;
+    const id = +rm.dataset.rm;
+    bench.items = bench.items.filter(i => i.id !== id);
+    if (bench.selected === id) { bench.selected = null; bench.selPx = null; }
+    renderBench();
+    return;
+  }
+  const tr = e.target.closest("tr[data-id]");
+  if (tr) selectBenchItem(+tr.dataset.id);
+});
+document.addEventListener("click", e => {
+  const id = e.target.dataset?.pt;
+  if (id) selectBenchItem(+id);
+});
+
+document.querySelectorAll("#benchTable th[data-sort]").forEach(th => th.addEventListener("click", () => {
+  const key = th.dataset.sort;
+  bench.sort = bench.sort && bench.sort.key === key ? { key, dir: -bench.sort.dir } : { key, dir: 1 };
+  document.querySelectorAll("#benchTable th[data-sort]").forEach(h => delete h.dataset.dir);
+  th.dataset.dir = bench.sort.dir;
+  renderBenchTable();
+}));
+
+let chartResizeTimer;
+window.addEventListener("resize", () => { clearTimeout(chartResizeTimer); chartResizeTimer = setTimeout(renderBenchCharts, 150); });
+
+renderBenchNote();
+renderBench();
 renderConvert();
 renderTransfer();
 </script>

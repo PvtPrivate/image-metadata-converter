@@ -1,6 +1,7 @@
 # Image Metadata Converter
 
 A single-file browser tool that converts ComfyUI and Automatic1111 images between WebP, AVIF, JPEG XL, JPEG and PNG without losing their generation metadata: the ComfyUI workflow and prompt, or the A1111 `parameters` text.
+It also benchmarks how those formats compare on your own images.
 
 Open `index.html` in Chrome or Edge. Nothing to install, and images never leave your computer.
 
@@ -23,6 +24,11 @@ Open `index.html` in Chrome or Edge. Nothing to install, and images never leave 
   - Two lists: **Originals** (any input format) and **Files to fix** (WebP, PNG, JPEG, AVIF or JPEG XL).
   - Files to fix are matched to originals by name. A dropdown lets you pick a different original, or one for a file that has no match.
   - Only the metadata is written. The image isn't re-encoded, and existing generation metadata is replaced, not duplicated.
+- **Benchmark**: how close compressed versions are to an original, and how big they are.
+  - Generates versions with the same encoders and options as Convert (effort, Sharp YUV and JPEG background come from the Convert tab): pick formats, a list of qualities, and optionally a lossless version of each. Files made with other tools can be added too.
+  - Scores each one: SSIM, PSNR, MSE, worst pixel error, bits per pixel, size saved and encode time, with a plain-language grade (Pristine, Excellent, Good, Fair, Poor, Bad by SSIM) and a "best pick": the smallest file that meets your quality target, either one of those grades or a custom minimum SSIM.
+  - **Transparency** is compared, not flattened: both images are laid over black and over white and the worse score counts, so alpha changes count as much as they show and colour hidden in fully transparent areas doesn't. Alpha PSNR and alpha max error score the alpha channel on its own.
+  - Rate–distortion charts, a split-slider / difference-map viewer (checkerboard, black or white background) and CSV export.
 - Drag and drop files or folders, thumbnails, per-file remove, save to a folder (keeps subfolders) or download as ZIP.
 
 ## How the metadata is stored
@@ -49,11 +55,12 @@ Metadata is read from PNG text chunks, the EXIF in JPG, AVIF, JPEG XL and WebP, 
 ## Notes
 
 - **Internet:** each encoder and decoder downloads from jsDelivr the first time it's used:
-  - `@jsquash/webp`, `@jsquash/avif`, `@jsquash/jxl`, `@jsquash/jpeg` and `@jsquash/oxipng` for the formats (JPEG XL is also decoded with `@jsquash/jxl`, since most browsers can't).
+  - `@jsquash/webp`, `@jsquash/avif`, `@jsquash/jxl`, `@jsquash/jpeg` and `@jsquash/oxipng` for the formats (JPEG XL is also decoded with `@jsquash/jxl`, since most browsers can't; Benchmark decodes AVIF with `@jsquash/avif` as well, because the browser's canvas rounds the colour of semi-transparent pixels).
   - `three` for its EXR loader.
 
   AVIF and JPEG XL use the single-threaded encoders, because the multi-threaded ones need cross-origin isolation, which a page opened from disk can't have.
 - **EXR:** converted from linear light to 8-bit sRGB. Values above white are clipped.
+- **Size limits:** the encoders get at most 2 GB of memory in the browser. JPEG XL needs the most and fails above about 15 megapixels (e.g. 3300×4500), whatever the effort; WebP is limited to 16383 px per side. An encoder that crashes is replaced, so the next image works.
 - **Unsupported:** animated WebPs.
 - **Browser:** "Save to folder" uses the File System Access API (Chrome/Edge). Other browsers can use the ZIP download.
 
