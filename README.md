@@ -71,8 +71,8 @@ Metadata is read from PNG text chunks, the EXIF in JPG, AVIF, JPEG XL and WebP, 
 ## Deploying
 
 - **GitHub Pages** serves `index.html` from the root of `main`.
-- **Cloudflare Workers** (static assets) publishes only `index.html` and `_headers` (security headers), copied into `dist/`. `wrangler.toml` points the Worker at `dist/`.
-  - Build command: `mkdir -p dist && cp index.html _headers dist/`
-  - Deploy command: `npx wrangler deploy`
+- **Cloudflare Pages** publishes only `index.html` and `_headers` (security headers), copied into `dist/`:
+  - Git integration: framework preset *None*, build command `mkdir -p dist && cp index.html _headers dist/`. The build output directory (`dist`) comes from `wrangler.toml`.
+  - Wrangler: run the same command, then `npx wrangler pages deploy`.
 
 `Sample/` and the README aren't published to Cloudflare.
