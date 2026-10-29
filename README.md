@@ -3,7 +3,7 @@
 A single-file browser tool that converts ComfyUI and Automatic1111 images between WebP, AVIF, JPEG XL, JPEG and PNG without losing their generation metadata: the ComfyUI workflow and prompt, or the A1111 `parameters` text.
 It also benchmarks how those formats compare on your own images.
 
-Open `index.html` in Chrome or Edge. Nothing to install, and images never leave your computer.
+Use it at https://image-metadata-converter.pages.dev/, or open `index.html` in Chrome or Edge. Nothing to install, and images never leave your computer.
 
 ## Features
 
@@ -70,9 +70,7 @@ Metadata is read from PNG text chunks, the EXIF in JPG, AVIF, JPEG XL and WebP, 
 
 ## Deploying
 
-- **GitHub Pages** serves `index.html` from the root of `main`.
-- **Cloudflare Pages** publishes only `index.html` and `_headers` (security headers), copied into `dist/`:
-  - Git integration: framework preset *None*, build command `mkdir -p dist && cp index.html _headers dist/`. The build output directory (`dist`) comes from `wrangler.toml`.
-  - Wrangler: run the same command, then `npx wrangler pages deploy`.
+The app is hosted on Cloudflare Pages at https://image-metadata-converter.pages.dev/. Only `index.html` and `_headers` (security headers) are published, copied into `dist/`:
 
-`Sample/` and the README aren't published to Cloudflare.
+- Git integration: framework preset *None*, build command `mkdir -p dist && cp index.html _headers dist/`. The build output directory (`dist`) comes from `wrangler.toml`.
+- Wrangler: run the same command, then `npx wrangler pages deploy`.
