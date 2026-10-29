@@ -1,0 +1,5 @@
+name = "image-metadata-converter"
+compatibility_date = "2026-10-29"
+
+[assets]
+directory = "./dist"

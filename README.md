@@ -67,3 +67,12 @@ Metadata is read from PNG text chunks, the EXIF in JPG, AVIF, JPEG XL and WebP, 
 ## Samples
 
 `Sample/` holds test images from ComfyUI and A1111 in each supported format.
+
+## Deploying
+
+- **GitHub Pages** serves `index.html` from the root of `main`.
+- **Cloudflare Workers** (static assets) publishes only `index.html` and `_headers` (security headers), copied into `dist/`. `wrangler.toml` points the Worker at `dist/`.
+  - Build command: `mkdir -p dist && cp index.html _headers dist/`
+  - Deploy command: `npx wrangler deploy`
+
+`Sample/` and the README aren't published to Cloudflare.
